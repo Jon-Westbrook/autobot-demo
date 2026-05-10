@@ -36,6 +36,7 @@ header h1{font-family:'Orbitron',sans-serif;font-size:34px;color:var(--cyan);let
 #strategy-list.loading-screen{display:flex;align-items:center;justify-content:center;min-height:calc(100vh - 210px)}
 .strategy-card{padding:20px}
 .card-header{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:14px}
+.card-badges{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
 .title-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .card-title h2{font-family:'Orbitron',sans-serif;font-size:22px;color:var(--text);letter-spacing:2px}
 .card-title .meta{color:var(--muted);font-size:12px;margin-top:4px}
@@ -45,6 +46,10 @@ header h1{font-family:'Orbitron',sans-serif;font-size:34px;color:var(--cyan);let
 .badge.ok{border-color:var(--green);color:var(--green)}
 .badge.degraded{border-color:var(--yellow);color:var(--yellow)}
 .badge.error{border-color:var(--red);color:var(--red)}
+.badge.contract{border-color:var(--cyan);color:var(--cyan)}
+.badge.matched{border-color:var(--green);color:var(--green)}
+.badge.proxy{border-color:var(--yellow);color:var(--yellow)}
+.badge.mismatch{border-color:var(--red);color:var(--red)}
 .card-summary{display:flex;flex-wrap:wrap;gap:14px;font-size:13px;color:var(--muted);margin-bottom:16px}
 .card-summary strong{color:var(--text)}
 .summary-chip{display:inline-flex;gap:6px;align-items:baseline}
@@ -87,6 +92,7 @@ header h1{font-family:'Orbitron',sans-serif;font-size:34px;color:var(--cyan);let
 .kv{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 12px;font-size:13px}
 .kv dt{color:var(--muted)}
 .kv dd{color:var(--text);text-align:right}
+.surface-contract{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
 .issues{font-size:13px;line-height:1.5;color:var(--text);padding-left:16px}
 .issues li+li{margin-top:6px}
 .issues.none{padding-left:0;list-style:none;color:var(--muted)}
@@ -336,6 +342,24 @@ function renderLogBlock(title, lines) {
 
 function moneyClass(value) {
   return Number(value) >= 0 ? 'money-up' : 'money-down';
+}
+
+function contractStatusClass(status) {
+  if (status === 'MATCHED') return 'matched';
+  if (status === 'PROXY') return 'proxy';
+  if (status === 'MISMATCH') return 'mismatch';
+  return '';
+}
+
+function renderContractStatus(status) {
+  if (!status) return '—';
+  return `<span class="badge ${contractStatusClass(status)}">${escHtml(status)}</span>`;
+}
+
+function renderContractSurface(surface) {
+  if (!surface || !surface.status) return '—';
+  const implementation = surface.implementation ? `<span class="muted">${escHtml(surface.implementation)}</span>` : '';
+  return `<span class="surface-contract">${renderContractStatus(surface.status)}${implementation}</span>`;
 }
 
 function ensureChartState(strategy) {
@@ -637,6 +661,7 @@ function renderStrategies(strategies) {
     ensureChartState(strategy);
     const live = strategy.live;
     const paper = strategy.paper || null;
+    const contract = strategy.contract || {};
     const execution = strategy.execution;
     const data = strategy.data;
     const health = strategy.health;
@@ -652,7 +677,10 @@ function renderStrategies(strategies) {
             </div>
             <div class="meta">${escHtml(strategy.strategy_id)}</div>
           </div>
-          <span class="badge ${health.level}">${escHtml(health.level)}</span>
+          <div class="card-badges">
+            <span class="badge contract">${escHtml(contract.execution_contract || '—')}</span>
+            <span class="badge ${health.level}">${escHtml(health.level)}</span>
+          </div>
         </div>
 
         ${renderSummary(strategy)}
@@ -682,6 +710,16 @@ function renderStrategies(strategies) {
                   <dt>Snapshot source</dt><dd>${escHtml(data.snapshot_source || '—')}</dd>
                   <dt>Snapshot time</dt><dd>${fmtTs(data.snapshot_ts)}</dd>
                   <dt>Data mode</dt><dd>${escHtml(data.data_mode || '—')}</dd>
+                </dl>
+              </section>
+
+              <section class="panel">
+                <h3>Contract</h3>
+                <dl class="kv">
+                  <dt>Declared</dt><dd>${escHtml(contract.execution_contract || '—')}</dd>
+                  <dt>Historical Replay</dt><dd>${renderContractSurface(contract.historical)}</dd>
+                  <dt>Modeled Live</dt><dd>${renderContractSurface(contract.modeled)}</dd>
+                  <dt>Paper Trade</dt><dd>${renderContractSurface(contract.paper)}</dd>
                 </dl>
               </section>
 
