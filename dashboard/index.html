@@ -36,17 +36,17 @@ header h1{font-family:'Orbitron',sans-serif;font-size:34px;color:var(--cyan);let
 #strategy-list.loading-screen{display:flex;align-items:center;justify-content:center;min-height:calc(100vh - 210px)}
 .strategy-card{padding:20px}
 .card-header{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:14px}
-.card-badges{display:flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
 .title-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
 .card-title h2{font-family:'Orbitron',sans-serif;font-size:22px;color:var(--text);letter-spacing:2px}
-.card-title .meta{color:var(--muted);font-size:12px;margin-top:4px}
+.card-title .meta{color:var(--muted);font-size:12px;margin-top:4px;display:flex;align-items:center;gap:8px;flex-wrap:wrap}
+.meta-contract{letter-spacing:.4px;text-transform:none}
+.meta-sep{opacity:.6}
 .info-btn{display:inline-flex;align-items:center;justify-content:center;width:26px;height:26px;border-radius:999px;border:1px solid var(--cyan);background:transparent;color:var(--cyan);cursor:pointer;font-family:'Orbitron',sans-serif;font-size:12px;box-shadow:0 0 18px rgba(0,240,255,.08)}
 .info-btn:hover{background:rgba(0,240,255,.08)}
 .badge{display:inline-block;padding:6px 12px;border-radius:999px;font-size:11px;font-family:'Orbitron',sans-serif;letter-spacing:1px;text-transform:uppercase;border:1px solid var(--line)}
 .badge.ok{border-color:var(--green);color:var(--green)}
 .badge.degraded{border-color:var(--yellow);color:var(--yellow)}
 .badge.error{border-color:var(--red);color:var(--red)}
-.badge.contract{border-color:var(--cyan);color:var(--cyan)}
 .badge.matched{border-color:var(--green);color:var(--green)}
 .badge.proxy{border-color:var(--yellow);color:var(--yellow)}
 .badge.mismatch{border-color:var(--red);color:var(--red)}
@@ -675,12 +675,13 @@ function renderStrategies(strategies) {
               <h2>${escHtml(strategy.display_name)}</h2>
               <button class="info-btn" type="button" aria-label="About ${escHtml(strategy.display_name)}" onclick="openStrategyInfo('${escHtml(strategy.strategy_id)}')">i</button>
             </div>
-            <div class="meta">${escHtml(strategy.strategy_id)}</div>
+            <div class="meta">
+              <span>${escHtml(strategy.strategy_id)}</span>
+              <span class="meta-sep">·</span>
+              <span class="meta-contract">Contract: ${escHtml(contract.execution_contract || '—')}</span>
+            </div>
           </div>
-          <div class="card-badges">
-            <span class="badge contract">${escHtml(contract.execution_contract || '—')}</span>
-            <span class="badge ${health.level}">${escHtml(health.level)}</span>
-          </div>
+          <span class="badge ${health.level}">${escHtml(health.level)}</span>
         </div>
 
         ${renderSummary(strategy)}
