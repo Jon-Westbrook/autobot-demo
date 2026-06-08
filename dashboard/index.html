@@ -88,11 +88,15 @@ header h1{font-family:'Orbitron',sans-serif;font-size:34px;color:var(--cyan);let
 .details-shell{margin-top:14px;border:1px solid var(--line-soft);border-radius:12px;background:rgba(0,0,0,.14)}
 .details-shell summary{cursor:pointer;padding:12px 14px;font-family:'Orbitron',sans-serif;font-size:11px;color:var(--cyan);letter-spacing:2px;text-transform:uppercase}
 .details-body{padding:0 14px 14px}
-.panel-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(220px,1fr));gap:12px;margin-bottom:12px}
-.kv{display:grid;grid-template-columns:minmax(0,1fr) auto;gap:8px 12px;font-size:13px}
+.panel-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px;margin-bottom:12px}
+.kv{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,auto);gap:8px 12px;font-size:13px}
 .kv dt{color:var(--muted)}
-.kv dd{color:var(--text);text-align:right}
-.surface-contract{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end}
+.kv dd{color:var(--text);text-align:right;min-width:0;overflow-wrap:anywhere}
+.surface-contract{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;max-width:100%}
+.surface-contract .muted{font-size:11px;overflow-wrap:anywhere}
+.debug-shell{margin-top:12px;border:1px dashed rgba(34,41,58,.8);border-radius:10px;background:rgba(0,0,0,.08)}
+.debug-shell summary{cursor:pointer;padding:10px 14px;font-family:'Orbitron',sans-serif;font-size:10px;color:var(--muted);letter-spacing:2px;text-transform:uppercase}
+.debug-body{padding:0 14px 12px}
 .issues{font-size:13px;line-height:1.5;color:var(--text);padding-left:16px}
 .issues li+li{margin-top:6px}
 .issues.none{padding-left:0;list-style:none;color:var(--muted)}
@@ -326,7 +330,6 @@ function renderRuns(runs) {
 }
 
 function renderIssues(issues) {
-  if (!issues.length) return '<ul class="issues none"><li>none</li></ul>';
   return `<ul class="issues">${issues.map(issue => `<li>${escHtml(issue)}</li>`).join('')}</ul>`;
 }
 
@@ -695,10 +698,8 @@ function renderStrategies(strategies) {
               <section class="panel">
                 <h3>Health</h3>
                 <dl class="kv">
-                  <dt>Overall</dt><dd>${escHtml(health.level)}</dd>
                   <dt>Last success</dt><dd>${fmtTs(execution.last_success_ts)}</dd>
-                  <dt>Refresh log</dt><dd>${fmtTs(health.refresh_log_ts)}</dd>
-                  <dt>Run log</dt><dd>${fmtTs(health.run_log_ts)}</dd>
+                  <dt>Cron log</dt><dd>${fmtTs(health.run_log_ts)}</dd>
                   <dt>Data fresh</dt><dd>${health.data_fresh ? 'yes' : 'no'}</dd>
                 </dl>
               </section>
@@ -708,19 +709,15 @@ function renderStrategies(strategies) {
                 <dl class="kv">
                   <dt>Latest CSV date</dt><dd>${escHtml(data.latest_csv_date || '—')}</dd>
                   <dt>Session date</dt><dd>${escHtml(data.session_date || '—')}</dd>
-                  <dt>Snapshot source</dt><dd>${escHtml(data.snapshot_source || '—')}</dd>
-                  <dt>Snapshot time</dt><dd>${fmtTs(data.snapshot_ts)}</dd>
-                  <dt>Data mode</dt><dd>${escHtml(data.data_mode || '—')}</dd>
                 </dl>
               </section>
 
               <section class="panel">
                 <h3>Contract</h3>
                 <dl class="kv">
-                  <dt>Declared</dt><dd>${escHtml(contract.execution_contract || '—')}</dd>
-                  <dt>Historical Replay</dt><dd>${renderContractSurface(contract.historical)}</dd>
-                  <dt>Modeled Live</dt><dd>${renderContractSurface(contract.modeled)}</dd>
-                  <dt>Paper Trade</dt><dd>${renderContractSurface(contract.paper)}</dd>
+                  <dt>Historical</dt><dd>${renderContractSurface(contract.historical)}</dd>
+                  <dt>Modeled</dt><dd>${renderContractSurface(contract.modeled)}</dd>
+                  <dt>Paper</dt><dd>${renderContractSurface(contract.paper)}</dd>
                 </dl>
               </section>
 
@@ -731,14 +728,12 @@ function renderStrategies(strategies) {
                   <dt>Current asset</dt><dd>${escHtml(execution.current_asset || '—')}</dd>
                   <dt>Target asset</dt><dd>${escHtml(execution.target_asset || '—')}</dd>
                   <dt>Decision reason</dt><dd>${escHtml(execution.decision_reason || '—')}</dd>
-                  <dt>Raw signal</dt><dd>${execution.raw_signal === null || execution.raw_signal === undefined ? '—' : execution.raw_signal}</dd>
                   <dt>Regime</dt><dd>${escHtml(execution.regime || '—')}</dd>
-                  <dt>Last error</dt><dd>${escHtml(execution.last_error || '—')}</dd>
                 </dl>
               </section>
 
               <section class="panel">
-                <h3>Live Performance</h3>
+                <h3>Modeled Replay Performance</h3>
                 <dl class="kv">
                   <dt>Starting capital</dt><dd>${fmtMoney(live.starting_capital)}</dd>
                   <dt>Current equity</dt><dd>${fmtMoney(live.equity)}</dd>
@@ -747,7 +742,7 @@ function renderStrategies(strategies) {
                   <dt>P/L</dt><dd class="${moneyClass(live.pnl)}">${fmtMoney(live.pnl)}</dd>
                   <dt>P/L %</dt><dd class="${moneyClass(live.pnl)}">${fmtPct(live.pnl_pct)}</dd>
                   <dt>Max drawdown</dt><dd>${fmtPct(live.max_drawdown_pct)}</dd>
-                  <dt>Days live</dt><dd>${live.days_live}</dd>
+                  <dt>Days replayed</dt><dd>${live.days_live}</dd>
                 </dl>
               </section>
 
@@ -755,13 +750,11 @@ function renderStrategies(strategies) {
               <section class="panel">
                 <h3>Paper Trade</h3>
                 <dl class="kv">
-                  <dt>Overall</dt><dd>${escHtml((paper.health && paper.health.level) || '—')}</dd>
                   <dt>Equity at last paper run</dt><dd>${fmtMoney(paper.equity)} <span class="meta-sep">·</span> <span class="meta">${fmtTs(paper.last_execution_ts)}</span></dd>
                   <dt>Current asset</dt><dd>${escHtml(paper.current_asset || '—')}</dd>
                   <dt>Target asset</dt><dd>${escHtml(paper.target_asset || '—')}</dd>
                   <dt>Current allocation</dt><dd>${fmtPct(paper.current_allocation == null ? null : Number(paper.current_allocation) * 100)}</dd>
                   <dt>Target allocation</dt><dd>${fmtPct(paper.target_allocation == null ? null : Number(paper.target_allocation) * 100)}</dd>
-                  <dt>Last execution</dt><dd>${fmtTs(paper.last_execution_ts)}</dd>
                   <dt>Days live</dt><dd>${paper.days_live || 0}</dd>
                 </dl>
               </section>
@@ -778,10 +771,12 @@ function renderStrategies(strategies) {
                 </dl>
               </section>
 
+              ${(health.issues && health.issues.length) ? `
               <section class="panel">
                 <h3>Issues</h3>
                 ${renderIssues(health.issues)}
               </section>
+              ` : ''}
             </div>
 
             <section class="panel">
@@ -789,10 +784,26 @@ function renderStrategies(strategies) {
               ${renderRuns(strategy.recent_runs)}
             </section>
 
-            <div class="logs">
-              ${renderLogBlock('Refresh Log', strategy.log_preview.refresh || [])}
-              ${renderLogBlock('Run Log', strategy.log_preview.run || [])}
-            </div>
+            <details class="debug-shell">
+              <summary>Debug</summary>
+              <div class="debug-body">
+                <div class="panel-grid">
+                  <section class="panel">
+                    <h3>Telemetry</h3>
+                    <dl class="kv">
+                      <dt>Snapshot source</dt><dd>${escHtml(data.snapshot_source || '—')}</dd>
+                      <dt>Snapshot time</dt><dd>${fmtTs(data.snapshot_ts)}</dd>
+                      <dt>Data mode</dt><dd>${escHtml(data.data_mode || '—')}</dd>
+                      <dt>Raw signal</dt><dd>${execution.raw_signal === null || execution.raw_signal === undefined ? '—' : execution.raw_signal}</dd>
+                      <dt>Last error</dt><dd>${escHtml(execution.last_error || '—')}</dd>
+                    </dl>
+                  </section>
+                </div>
+                <div class="logs">
+                  ${renderLogBlock('Cron Log', strategy.log_preview.run || strategy.log_preview.refresh || [])}
+                </div>
+              </div>
+            </details>
           </div>
         </details>
       </article>
