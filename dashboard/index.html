@@ -756,7 +756,7 @@ function renderStrategies(strategies) {
                 <h3>Paper Trade</h3>
                 <dl class="kv">
                   <dt>Overall</dt><dd>${escHtml((paper.health && paper.health.level) || '—')}</dd>
-                  <dt>Current equity</dt><dd>${fmtMoney(paper.equity)}</dd>
+                  <dt>Equity at last paper run</dt><dd>${fmtMoney(paper.equity)} <span class="meta-sep">·</span> <span class="meta">${fmtTs(paper.last_execution_ts)}</span></dd>
                   <dt>Current asset</dt><dd>${escHtml(paper.current_asset || '—')}</dd>
                   <dt>Target asset</dt><dd>${escHtml(paper.target_asset || '—')}</dd>
                   <dt>Current allocation</dt><dd>${fmtPct(paper.current_allocation == null ? null : Number(paper.current_allocation) * 100)}</dd>
