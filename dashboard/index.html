@@ -677,6 +677,14 @@ function renderStrategies(strategies) {
     const health = strategy.health;
     const backtest = strategy.backtest;
     const sidEsc = escHtml(strategy.strategy_id);
+    const activeTab = cardState.tab;
+    const activeChartObj = activeChart(strategy) || {};
+    const activeStats = activeChartObj.stats || {};
+    const perfTitle = activeTab === 'paper' ? 'Paper Trade Performance'
+      : activeTab === 'live' ? 'Modeled Performance'
+      : 'Historical Replay Performance';
+    const paperActive = activeTab === 'paper' && paper && paper.enabled;
+    const tradeStateTitle = paperActive ? 'Paper Trade State' : 'Modeled Trade State';
 
     return `
       <article class="strategy-card">
@@ -730,27 +738,33 @@ function renderStrategies(strategies) {
               </section>
 
               <section class="panel">
-                <h3>Execution</h3>
+                <h3>${escHtml(tradeStateTitle)}</h3>
                 <dl class="kv">
+                  ${paperActive ? `
+                  <dt>Current asset</dt><dd>${escHtml(paper.current_asset || '—')}</dd>
+                  <dt>Target asset</dt><dd>${escHtml(paper.target_asset || '—')}</dd>
+                  <dt>Current allocation</dt><dd>${fmtPct(paper.current_allocation == null ? null : Number(paper.current_allocation) * 100)}</dd>
+                  <dt>Target allocation</dt><dd>${fmtPct(paper.target_allocation == null ? null : Number(paper.target_allocation) * 100)}</dd>
+                  <dt>Last paper run</dt><dd>${fmtTs(paper.last_execution_ts)}</dd>
+                  ` : `
                   <dt>Last action</dt><dd>${escHtml(execution.last_action || '—')}</dd>
                   <dt>Current asset</dt><dd>${escHtml(execution.current_asset || '—')}</dd>
                   <dt>Target asset</dt><dd>${escHtml(execution.target_asset || '—')}</dd>
                   <dt>Decision reason</dt><dd>${escHtml(execution.decision_reason || '—')}</dd>
                   <dt>Regime</dt><dd>${escHtml(execution.regime || '—')}</dd>
+                  `}
                 </dl>
               </section>
 
               <section class="panel">
-                <h3>Modeled Replay Performance</h3>
+                <h3>${escHtml(perfTitle)}</h3>
                 <dl class="kv">
-                  <dt>Starting capital</dt><dd>${fmtMoney(live.starting_capital)}</dd>
-                  <dt>Current equity</dt><dd>${fmtMoney(live.equity)}</dd>
-                  <dt>Cash</dt><dd>${fmtMoney(live.cash)}</dd>
-                  <dt>Invested</dt><dd>${fmtMoney(live.invested_amount)}</dd>
-                  <dt>P/L</dt><dd class="${moneyClass(live.pnl)}">${fmtMoney(live.pnl)}</dd>
-                  <dt>P/L %</dt><dd class="${moneyClass(live.pnl)}">${fmtPct(live.pnl_pct)}</dd>
-                  <dt>Max drawdown</dt><dd>${fmtPct(live.max_drawdown_pct)}</dd>
-                  <dt>Days replayed</dt><dd>${live.days_live}</dd>
+                  <dt>Start</dt><dd>${fmtMoney(activeStats.start_value)}</dd>
+                  <dt>Current</dt><dd>${fmtMoney(activeStats.current_value)}</dd>
+                  <dt>P/L</dt><dd class="${moneyClass(activeStats.pnl_pct)}">${fmtPct(activeStats.pnl_pct)}</dd>
+                  <dt>Max drawdown</dt><dd>${fmtPct(activeStats.max_drawdown_pct)}</dd>
+                  <dt>Trades</dt><dd>${activeStats.trades == null ? '—' : Number(activeStats.trades).toLocaleString('en-US')}</dd>
+                  <dt>Range</dt><dd>${fmtShortDate(activeStats.start_date)} → ${fmtShortDate(activeStats.end_date)}</dd>
                 </dl>
               </section>
 
