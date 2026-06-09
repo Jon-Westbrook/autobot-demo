@@ -675,7 +675,7 @@ function renderStrategies(strategies) {
     const execution = strategy.execution;
     const data = strategy.data;
     const health = strategy.health;
-    const backtest = strategy.backtest;
+    const fullHistory = strategy.full_history_stats || {};
     const sidEsc = escHtml(strategy.strategy_id);
     const activeTab = cardState.tab;
     const activeChartObj = activeChart(strategy) || {};
@@ -783,13 +783,15 @@ function renderStrategies(strategies) {
               ` : ''}
 
               <section class="panel">
-                <h3>Backtest Reference</h3>
+                <h3>Full-History Replay</h3>
                 <dl class="kv">
-                  <dt>Final value</dt><dd>${fmtMoney(backtest.final_value)}</dd>
-                  <dt>Annual return</dt><dd>${fmtPct(backtest.annual_return_pct)}</dd>
-                  <dt>Sharpe</dt><dd>${backtest.sharpe_ratio === null || backtest.sharpe_ratio === undefined ? '—' : backtest.sharpe_ratio}</dd>
-                  <dt>Max drawdown</dt><dd>${fmtPct(backtest.max_drawdown_pct)}</dd>
-                  <dt>Direction changes</dt><dd>${backtest.direction_changes === null || backtest.direction_changes === undefined ? '—' : backtest.direction_changes}</dd>
+                  <dt>Range</dt><dd>${escHtml(fullHistory.start_date || '—')} → ${escHtml(fullHistory.end_date || '—')}</dd>
+                  <dt>Final value</dt><dd>${fmtMoney(fullHistory.current_value)}</dd>
+                  <dt>P/L</dt><dd>${fmtPct(fullHistory.pnl_pct)}</dd>
+                  <dt>Annual return</dt><dd>${fmtPct(fullHistory.annual_return_pct)}</dd>
+                  <dt>Max drawdown</dt><dd>${fmtPct(fullHistory.max_drawdown_pct)}</dd>
+                  <dt>Trading days</dt><dd>${fullHistory.trading_days == null ? '—' : fullHistory.trading_days}</dd>
+                  <dt>Trades</dt><dd>${fullHistory.trades == null ? '—' : fullHistory.trades}</dd>
                 </dl>
               </section>
 
