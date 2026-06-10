@@ -50,6 +50,12 @@ header h1{font-family:'Orbitron',sans-serif;font-size:34px;color:var(--cyan);let
 .badge.matched{border-color:var(--green);color:var(--green)}
 .badge.proxy{border-color:var(--yellow);color:var(--yellow)}
 .badge.mismatch{border-color:var(--red);color:var(--red)}
+.status-dot{display:inline-flex;align-items:center;gap:7px;font-family:'Courier New',monospace;font-size:12px;letter-spacing:.3px;text-transform:lowercase;color:var(--muted)}
+.status-dot:before{content:'';display:inline-block;width:7px;height:7px;border-radius:999px;background:currentColor;flex:none;opacity:.95}
+.status-dot.matched,.status-dot.ok{color:var(--green)}
+.status-dot.proxy,.status-dot.degraded{color:var(--yellow)}
+.status-dot.mismatch,.status-dot.error{color:var(--red)}
+.status-dot.none,.status-dot.pending,.status-dot.unknown{color:var(--muted);opacity:.7}
 .card-summary{display:flex;flex-wrap:wrap;gap:14px;font-size:13px;color:var(--muted);margin-bottom:16px}
 .card-summary strong{color:var(--text)}
 .summary-chip{display:inline-flex;gap:6px;align-items:baseline}
@@ -89,14 +95,23 @@ header h1{font-family:'Orbitron',sans-serif;font-size:34px;color:var(--cyan);let
 .details-shell summary{cursor:pointer;padding:12px 14px;font-family:'Orbitron',sans-serif;font-size:11px;color:var(--cyan);letter-spacing:2px;text-transform:uppercase}
 .details-body{padding:0 14px 14px}
 .panel-grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(320px,1fr));gap:12px;margin-bottom:12px}
-.kv{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,auto);gap:8px 12px;font-size:13px}
-.kv dt{color:var(--muted)}
+.kv{display:grid;grid-template-columns:max-content minmax(0,1fr);column-gap:18px;row-gap:10px;font-size:13px;line-height:1.5}
+.kv dt{color:var(--muted);font-size:12px;white-space:nowrap}
 .kv dd{color:var(--text);text-align:right;min-width:0;overflow-wrap:anywhere}
-.surface-contract{display:inline-flex;align-items:center;gap:8px;flex-wrap:wrap;justify-content:flex-end;max-width:100%}
-.surface-contract .muted{font-size:11px;overflow-wrap:anywhere}
-.debug-shell{margin-top:12px;border:1px dashed rgba(34,41,58,.8);border-radius:10px;background:rgba(0,0,0,.08)}
-.debug-shell summary{cursor:pointer;padding:10px 14px;font-family:'Orbitron',sans-serif;font-size:10px;color:var(--muted);letter-spacing:2px;text-transform:uppercase}
+.kv .kv-row-text{grid-column:1/-1;display:flex;flex-direction:column;gap:4px}
+.kv .kv-row-text-label{color:var(--muted);font-size:11px;letter-spacing:.5px;text-transform:uppercase;white-space:normal}
+.kv .kv-row-text-value{color:var(--text);text-align:left;font-size:13px;line-height:1.55;overflow-wrap:anywhere}
+.surface-contract{display:inline-flex;align-items:center;gap:10px;flex-wrap:wrap;justify-content:flex-end;max-width:100%}
+.surface-contract .muted{font-size:11px;overflow-wrap:anywhere;color:var(--muted);opacity:.85}
+.debug-shell{margin-top:12px;border:1px solid rgba(34,41,58,.45);border-radius:10px;background:rgba(0,0,0,.05)}
+.debug-shell summary{cursor:pointer;padding:9px 14px;font-family:'Orbitron',sans-serif;font-size:10px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;opacity:.75}
+.debug-shell summary:hover{opacity:1}
 .debug-body{padding:0 14px 12px}
+.debug-body .panel{background:rgba(16,19,29,.55);border-color:rgba(34,41,58,.4)}
+.debug-body .panel h3{color:var(--muted);opacity:.85}
+.debug-body .kv{font-size:12px}
+.debug-body .kv dt{font-size:11px}
+.debug-body .kv dd{color:var(--text);opacity:.85}
 .issues{font-size:13px;line-height:1.5;color:var(--text);padding-left:16px}
 .issues li+li{margin-top:6px}
 .issues.none{padding-left:0;list-style:none;color:var(--muted)}
@@ -106,8 +121,10 @@ header h1{font-family:'Orbitron',sans-serif;font-size:34px;color:var(--cyan);let
 .runs-table td{color:var(--text)}
 .muted{color:var(--muted)}
 .logs{display:grid;grid-template-columns:repeat(auto-fit,minmax(280px,1fr));gap:12px;margin-top:12px}
-details.log-block{border:1px solid rgba(34,41,58,.8);border-radius:10px;background:rgba(0,0,0,.16)}
-details.log-block summary{cursor:pointer;padding:12px 14px;font-family:'Orbitron',sans-serif;font-size:11px;color:var(--cyan);letter-spacing:2px;text-transform:uppercase}
+details.log-block{border:1px solid rgba(34,41,58,.4);border-radius:10px;background:rgba(0,0,0,.06)}
+details.log-block summary{cursor:pointer;padding:10px 14px;font-family:'Orbitron',sans-serif;font-size:11px;color:var(--muted);letter-spacing:2px;text-transform:uppercase;opacity:.8}
+details.log-block summary:hover{opacity:1}
+details.log-block pre{color:var(--muted);opacity:.92}
 pre{padding:0 14px 14px;white-space:pre-wrap;word-break:break-word;font-size:12px;line-height:1.55;color:var(--text)}
 .empty{color:var(--muted);font-size:13px;padding:12px 0}
 .money-up{color:var(--green)}
@@ -354,13 +371,18 @@ function contractStatusClass(status) {
   return '';
 }
 
+function contractStatusLabel(status) {
+  if (!status) return 'n/a';
+  return String(status).toLowerCase();
+}
 function renderContractStatus(status) {
-  if (!status) return '—';
-  return `<span class="badge ${contractStatusClass(status)}">${escHtml(status)}</span>`;
+  if (!status) return `<span class="status-dot none">n/a</span>`;
+  const cls = contractStatusClass(status) || 'unknown';
+  return `<span class="status-dot ${cls}">${escHtml(contractStatusLabel(status))}</span>`;
 }
 
 function renderContractSurface(surface) {
-  if (!surface || !surface.status) return '—';
+  if (!surface || (!surface.status && !surface.implementation)) return '—';
   const implementation = surface.implementation ? `<span class="muted">${escHtml(surface.implementation)}</span>` : '';
   return `<span class="surface-contract">${renderContractStatus(surface.status)}${implementation}</span>`;
 }
@@ -700,7 +722,7 @@ function renderStrategies(strategies) {
               <span class="meta-contract">Contract: ${escHtml(contract.execution_contract || '—')}</span>
             </div>
           </div>
-          <span class="badge ${health.level}">${escHtml(health.level)}</span>
+          <span class="status-dot ${health.level}">${escHtml(String(health.level || 'unknown').toLowerCase())}</span>
         </div>
 
         ${renderSummary(strategy)}
@@ -750,8 +772,8 @@ function renderStrategies(strategies) {
                   <dt>Last action</dt><dd>${escHtml(execution.last_action || '—')}</dd>
                   <dt>Current asset</dt><dd>${escHtml(execution.current_asset || '—')}</dd>
                   <dt>Target asset</dt><dd>${escHtml(execution.target_asset || '—')}</dd>
-                  <dt>Decision reason</dt><dd>${escHtml(execution.decision_reason || '—')}</dd>
                   <dt>Regime</dt><dd>${escHtml(execution.regime || '—')}</dd>
+                  <div class="kv-row-text"><dt class="kv-row-text-label">Decision reason</dt><dd class="kv-row-text-value">${escHtml(execution.decision_reason || '—')}</dd></div>
                   `}
                 </dl>
               </section>
