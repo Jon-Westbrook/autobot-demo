@@ -109,9 +109,11 @@ header h1{font-family:'Orbitron',sans-serif;font-size:34px;color:var(--cyan);let
 .debug-body{padding:0 14px 12px}
 .debug-body .panel{background:rgba(16,19,29,.55);border-color:rgba(34,41,58,.4)}
 .debug-body .panel h3{color:var(--muted);opacity:.85}
-.debug-body .kv{font-size:12px}
+.debug-body .kv{font-size:12px;column-gap:20px;row-gap:8px}
 .debug-body .kv dt{font-size:11px}
-.debug-body .kv dd{color:var(--text);opacity:.85}
+.debug-body .kv dd{color:var(--text);opacity:.85;font-variant-numeric:tabular-nums}
+.kv-empty{color:var(--muted);opacity:.5;font-variant-numeric:normal}
+.telemetry-panel .kv dd{overflow-wrap:anywhere}
 .issues{font-size:13px;line-height:1.5;color:var(--text);padding-left:16px}
 .issues li+li{margin-top:6px}
 .issues.none{padding-left:0;list-style:none;color:var(--muted)}
@@ -258,6 +260,23 @@ function fmtPct(value) {
   if (value === null || value === undefined) return '—';
   const num = Number(value);
   return `${num >= 0 ? '+' : ''}${num.toFixed(2)}%`;
+}
+
+function fmtSignal(value) {
+  const num = Number(value);
+  if (!Number.isFinite(num)) return '—';
+  return `${num >= 0 ? '+' : ''}${num.toFixed(4)}`;
+}
+
+// dashOr keeps the dash placeholder consistent across the dashboard. Missing
+// values become a muted "—" so they read as "no data" rather than a real value.
+function dashOr(value, formatter) {
+  if (value === null || value === undefined) return '<span class="kv-empty">—</span>';
+  if (typeof value === 'number' && Number.isNaN(value)) return '<span class="kv-empty">—</span>';
+  if (typeof value === 'string' && value === '') return '<span class="kv-empty">—</span>';
+  const formatted = formatter ? formatter(value) : escHtml(String(value));
+  if (formatted === '—') return '<span class="kv-empty">—</span>';
+  return formatted;
 }
 
 function ensureTooltipHost(strategyId) {
@@ -834,14 +853,14 @@ function renderStrategies(strategies) {
               <summary>Debug</summary>
               <div class="debug-body">
                 <div class="panel-grid">
-                  <section class="panel">
+                  <section class="panel telemetry-panel">
                     <h3>Telemetry</h3>
                     <dl class="kv">
-                      <dt>Snapshot source</dt><dd>${escHtml(data.snapshot_source || '—')}</dd>
-                      <dt>Snapshot time</dt><dd>${fmtTs(data.snapshot_ts)}</dd>
-                      <dt>Data mode</dt><dd>${escHtml(data.data_mode || '—')}</dd>
-                      <dt>Raw signal</dt><dd>${execution.raw_signal === null || execution.raw_signal === undefined ? '—' : execution.raw_signal}</dd>
-                      <dt>Last error</dt><dd>${escHtml(execution.last_error || '—')}</dd>
+                      <dt>Snapshot source</dt><dd>${dashOr(data.snapshot_source, escHtml)}</dd>
+                      <dt>Snapshot time</dt><dd>${dashOr(data.snapshot_ts, fmtTs)}</dd>
+                      <dt>Data mode</dt><dd>${dashOr(data.data_mode, escHtml)}</dd>
+                      <dt>Raw signal</dt><dd>${dashOr(execution.raw_signal, fmtSignal)}</dd>
+                      <dt>Last error</dt><dd>${dashOr(execution.last_error, escHtml)}</dd>
                     </dl>
                   </section>
                 </div>
