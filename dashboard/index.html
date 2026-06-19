@@ -813,7 +813,8 @@ function renderStrategies(strategies) {
               <section class="panel">
                 <h3>Paper Trade</h3>
                 <dl class="kv">
-                  <dt>Equity at last paper run</dt><dd>${fmtMoney(paper.equity)} <span class="meta-sep">·</span> <span class="meta">${fmtTs(paper.last_execution_ts)}</span></dd>
+                  <dt>Last execution equity</dt><dd>${fmtMoney(paper.equity)} <span class="meta-sep">·</span> <span class="meta">${fmtTs(paper.last_execution_ts)}</span></dd>
+                  <dt>Last EOD paper equity</dt><dd>${paper.eod_equity == null ? "—" : fmtMoney(paper.eod_equity)} <span class="meta-sep">·</span> <span class="meta">${paper.eod_session_date == null ? "—" : escHtml(paper.eod_session_date)}</span></dd>
                   <dt>Current asset</dt><dd>${escHtml(paper.current_asset || '—')}</dd>
                   <dt>Target asset</dt><dd>${escHtml(paper.target_asset || '—')}</dd>
                   <dt>Current allocation</dt><dd>${fmtPct(paper.current_allocation == null ? null : Number(paper.current_allocation) * 100)}</dd>
