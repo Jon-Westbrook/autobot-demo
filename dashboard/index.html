@@ -811,8 +811,11 @@ function renderStrategies(strategies) {
 
               ${paper && paper.enabled ? `
               <section class="panel">
-                <h3>Paper Trade</h3>
+                <h3>Paper Trade${paper.health && paper.health.level && paper.health.level !== 'ok' && paper.health.level !== 'pending' ? ` <span class="status-dot ${paper.health.level}">${escHtml(paper.health.level)}</span>` : ''}</h3>
                 <dl class="kv">
+                  ${paper.health && paper.health.level && paper.health.level !== 'ok' && paper.health.level !== 'pending' ? `
+                  <dt>Status</dt><dd><span class="status-dot ${paper.health.level}">${escHtml(paper.health.level)}</span> ${escHtml(paper.last_action || '—')}${paper.last_error ? ` <span class="meta-sep">·</span> <span class="meta">${escHtml(paper.last_error)}</span>` : ''}</dd>
+                  ` : ''}
                   <dt>Last execution equity</dt><dd>${fmtMoney(paper.equity)} <span class="meta-sep">·</span> <span class="meta">${fmtTs(paper.last_execution_ts)}</span></dd>
                   <dt>Last EOD paper equity</dt><dd>${paper.eod_equity == null ? "—" : fmtMoney(paper.eod_equity)} <span class="meta-sep">·</span> <span class="meta">${paper.eod_session_date == null ? "—" : escHtml(paper.eod_session_date)}</span></dd>
                   <dt>Current asset</dt><dd>${escHtml(paper.current_asset || '—')}</dd>
