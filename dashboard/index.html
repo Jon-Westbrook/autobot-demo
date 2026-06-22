@@ -712,6 +712,7 @@ function renderStrategies(strategies) {
     const cardState = ensureChartState(strategy);
     const live = strategy.live;
     const paper = strategy.paper || null;
+    const liveTrade = strategy.live_trade || null;
     const contract = strategy.contract || {};
     const execution = strategy.execution;
     const data = strategy.data;
@@ -722,10 +723,14 @@ function renderStrategies(strategies) {
     const activeChartObj = activeChart(strategy) || {};
     const activeStats = activeChartObj.stats || {};
     const perfTitle = activeTab === 'paper' ? 'Paper Trade Performance'
+      : activeTab === 'live_trade' ? 'Live Trade Performance'
       : activeTab === 'live' ? 'Modeled Performance'
       : 'Historical Replay Performance';
     const paperActive = activeTab === 'paper' && paper && paper.enabled;
-    const tradeStateTitle = paperActive ? 'Paper Trade State' : 'Modeled Trade State';
+    const liveTradeActive = activeTab === 'live_trade' && liveTrade && liveTrade.enabled;
+    const tradeStateTitle = paperActive ? 'Paper Trade State'
+      : liveTradeActive ? 'Live Trade State'
+      : 'Modeled Trade State';
 
     return `
       <article class="strategy-card">
@@ -775,6 +780,7 @@ function renderStrategies(strategies) {
                   <dt>Historical</dt><dd>${renderContractSurface(contract.historical)}</dd>
                   <dt>Modeled</dt><dd>${renderContractSurface(contract.modeled)}</dd>
                   <dt>Paper</dt><dd>${renderContractSurface(contract.paper)}</dd>
+                  ${contract.live ? `<dt>Live</dt><dd>${renderContractSurface(contract.live)}</dd>` : ''}
                 </dl>
               </section>
 
@@ -787,6 +793,12 @@ function renderStrategies(strategies) {
                   <dt>Current allocation</dt><dd>${fmtPct(paper.current_allocation == null ? null : Number(paper.current_allocation) * 100)}</dd>
                   <dt>Target allocation</dt><dd>${fmtPct(paper.target_allocation == null ? null : Number(paper.target_allocation) * 100)}</dd>
                   <dt>Last paper run</dt><dd>${fmtTs(paper.last_execution_ts)}</dd>
+                  ` : liveTradeActive ? `
+                  <dt>Current asset</dt><dd>${escHtml(liveTrade.current_asset || '—')}</dd>
+                  <dt>Target asset</dt><dd>${escHtml(liveTrade.target_asset || '—')}</dd>
+                  <dt>Current allocation</dt><dd>${fmtPct(liveTrade.current_allocation == null ? null : Number(liveTrade.current_allocation) * 100)}</dd>
+                  <dt>Target allocation</dt><dd>${fmtPct(liveTrade.target_allocation == null ? null : Number(liveTrade.target_allocation) * 100)}</dd>
+                  <dt>Last live run</dt><dd>${fmtTs(liveTrade.last_execution_ts)}</dd>
                   ` : `
                   <dt>Last action</dt><dd>${escHtml(execution.last_action || '—')}</dd>
                   <dt>Current asset</dt><dd>${escHtml(execution.current_asset || '—')}</dd>
@@ -808,6 +820,24 @@ function renderStrategies(strategies) {
                   <dt>Range</dt><dd>${fmtShortDate(activeStats.start_date)} → ${fmtShortDate(activeStats.end_date)}</dd>
                 </dl>
               </section>
+
+              ${liveTrade && liveTrade.enabled ? `
+              <section class="panel">
+                <h3>Live Trade${liveTrade.health && liveTrade.health.level && liveTrade.health.level !== 'ok' && liveTrade.health.level !== 'pending' ? ` <span class="status-dot ${liveTrade.health.level}">${escHtml(liveTrade.health.level)}</span>` : ''}</h3>
+                <dl class="kv">
+                  ${liveTrade.health && liveTrade.health.level && liveTrade.health.level !== 'ok' && liveTrade.health.level !== 'pending' ? `
+                  <dt>Status</dt><dd><span class="status-dot ${liveTrade.health.level}">${escHtml(liveTrade.health.level)}</span> ${escHtml(liveTrade.last_action || '—')}${liveTrade.last_error ? ` <span class="meta-sep">·</span> <span class="meta">${escHtml(liveTrade.last_error)}</span>` : ''}</dd>
+                  ` : ''}
+                  <dt>Last execution equity</dt><dd>${fmtMoney(liveTrade.equity)} <span class="meta-sep">·</span> <span class="meta">${fmtTs(liveTrade.last_execution_ts)}</span></dd>
+                  <dt>Last EOD live equity</dt><dd>${liveTrade.eod_equity == null ? "—" : fmtMoney(liveTrade.eod_equity)} <span class="meta-sep">·</span> <span class="meta">${liveTrade.eod_session_date == null ? "—" : escHtml(liveTrade.eod_session_date)}</span></dd>
+                  <dt>Current asset</dt><dd>${escHtml(liveTrade.current_asset || '—')}</dd>
+                  <dt>Target asset</dt><dd>${escHtml(liveTrade.target_asset || '—')}</dd>
+                  <dt>Current allocation</dt><dd>${fmtPct(liveTrade.current_allocation == null ? null : Number(liveTrade.current_allocation) * 100)}</dd>
+                  <dt>Target allocation</dt><dd>${fmtPct(liveTrade.target_allocation == null ? null : Number(liveTrade.target_allocation) * 100)}</dd>
+                  <dt>Days live</dt><dd>${liveTrade.days_live || 0}</dd>
+                </dl>
+              </section>
+              ` : ''}
 
               ${paper && paper.enabled ? `
               <section class="panel">
