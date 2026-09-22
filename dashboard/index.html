@@ -596,9 +596,13 @@ function buildChartSvg(strategyId, chart, visibleMap, scale) {
     let started = false;
     points.forEach((point, index) => {
       const value = point[key];
-      if (value === null || value === undefined) return;
+      const numericValue = Number(value);
+      if (value === null || value === undefined || !Number.isFinite(numericValue) || (logScale && numericValue <= 0)) {
+        started = false;
+        return;
+      }
       const x = xForIndex(index);
-      const y = yForValue(Number(value));
+      const y = yForValue(numericValue);
       path += `${started ? 'L' : 'M'}${x.toFixed(2)},${y.toFixed(2)} `;
       started = true;
     });
