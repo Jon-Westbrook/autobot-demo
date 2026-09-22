@@ -9,6 +9,7 @@
 <style>
 *{box-sizing:border-box;margin:0;padding:0}
 :root{--bg:#090b12;--panel:#10131d;--line:#22293a;--line-soft:rgba(34,41,58,.65);--cyan:#00f0ff;--green:#00ff88;--yellow:#f0e000;--red:#ff5c7a;--text:#e8eef7;--muted:#92a1b8;--gray:#a7b3c8}
+html{background:var(--bg)}
 body{background:radial-gradient(circle at top,rgba(0,240,255,.08),transparent 35%),linear-gradient(180deg,#090b12,#07090e);color:var(--text);font-family:'Courier New',monospace;min-height:100vh}
 body:before{content:'';position:fixed;inset:0;pointer-events:none;background-image:linear-gradient(rgba(0,240,255,.03) 1px,transparent 1px),linear-gradient(90deg,rgba(0,240,255,.03) 1px,transparent 1px);background-size:40px 40px;opacity:.45}
 #login{display:flex;align-items:center;justify-content:center;height:100vh;flex-direction:column;gap:18px}
@@ -65,9 +66,10 @@ header h1{font-family:'Orbitron',sans-serif;font-size:34px;color:var(--cyan);let
 .panel h3,.section-title{font-family:'Orbitron',sans-serif;font-size:12px;color:var(--cyan);letter-spacing:2px;text-transform:uppercase;margin-bottom:12px}
 .section-title{margin-bottom:10px}
 .chart-panel{padding:16px 16px 14px;margin-bottom:14px}
-.chart-head{display:flex;justify-content:space-between;align-items:flex-start;gap:16px;flex-wrap:wrap;margin-bottom:12px}
+.chart-head{display:grid;grid-template-columns:minmax(0,1fr) auto;align-items:start;gap:16px;margin-bottom:12px}
 .chart-subtitle{color:var(--muted);font-size:12px}
-.chart-tabs,.series-toggles,.scale-toggles{display:flex;flex-wrap:wrap;gap:8px}
+.chart-tabs{display:flex;flex-wrap:nowrap;justify-content:flex-end;gap:8px}
+.series-toggles,.scale-toggles{display:flex;flex-wrap:wrap;gap:8px}
 .tab-btn,.toggle-btn,.scale-btn{background:transparent;border:1px solid var(--line);color:var(--muted);padding:8px 12px;border-radius:999px;cursor:pointer;font-family:'Orbitron',sans-serif;font-size:11px;letter-spacing:1px;text-transform:uppercase}
 .tab-btn.active{border-color:var(--cyan);color:var(--cyan)}
 .toggle-btn.active{border-color:var(--series-color,var(--cyan));color:var(--series-color,var(--cyan))}
@@ -145,6 +147,8 @@ pre{padding:0 14px 14px;white-space:pre-wrap;word-break:break-word;font-size:12p
 @media (max-width: 720px){
   header h1{font-size:28px;letter-spacing:4px}
   .card-summary{flex-direction:column;gap:6px}
+  .chart-head{grid-template-columns:minmax(0,1fr)}
+  .chart-tabs{justify-self:end;max-width:100%;overflow-x:auto}
   .runs-table th:nth-child(4),.runs-table td:nth-child(4),.runs-table th:nth-child(5),.runs-table td:nth-child(5){display:none}
 }
 </style>
@@ -162,7 +166,7 @@ pre{padding:0 14px 14px;white-space:pre-wrap;word-break:break-word;font-size:12p
   <header>
     <div>
       <h1>AUTOBOT</h1>
-      <div class="sub">Per-strategy paper trading dashboard</div>
+      <div class="sub">Trading dashboard</div>
     </div>
     <div class="header-actions">
       <span class="last-updated" id="last-ts"></span>
