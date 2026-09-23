@@ -339,7 +339,7 @@ function setLoading(active) {
       '<div class="dashboard-loading">'
       + '<div class="loading-title loading-pulse">Initializing</div>'
       + '<div class="loading-bar" aria-hidden="true"></div>'
-      + '<div class="loading-hint">Replaying strategies</div>'
+      + '<div class="loading-hint">Loading monitoring data</div>'
       + '</div>';
   } else if (!active && strategyList) {
     strategyList.classList.remove('loading-screen');
@@ -654,6 +654,9 @@ function buildChartSvg(strategyId, chart, visibleMap, scale) {
 
 function renderSummary(strategy) {
   const chart = activeChart(strategy);
+  if (chart && chart.availability === 'unavailable') {
+    return `<div class="card-summary">${escHtml(chart.subtitle)}</div>`;
+  }
   const stats = (chart && chart.stats) || {};
   const pnlPct = stats.pnl_pct == null ? 0 : stats.pnl_pct;
   const annualReturnPct = stats.annual_return_pct == null ? 0 : stats.annual_return_pct;
@@ -707,9 +710,13 @@ function renderChart(strategy) {
         </div>
         <div class="chart-tabs">${tabs}</div>
       </div>
+      ${chart.availability === 'unavailable' ? `
+      <div class="chart-empty">Canonical replay has not been validated yet.</div>
+      ` : `
       <div class="series-toggles">${toggles}</div>
       <div class="scale-toggles" style="margin-bottom:12px">${scales}</div>
       <div class="chart-wrap">${buildChartSvg(strategy.strategy_id, chart, state.visible, state.scale)}</div>
+      `}
     </section>
   `;
 }
@@ -725,7 +732,6 @@ function renderStrategies(strategies) {
     const execution = strategy.execution;
     const data = strategy.data;
     const health = strategy.health;
-    const fullHistory = strategy.full_history_stats || {};
     const sidEsc = escHtml(strategy.strategy_id);
     const activeTab = cardState.tab;
     const activeChartObj = activeChart(strategy) || {};
@@ -817,6 +823,7 @@ function renderStrategies(strategies) {
                 </dl>
               </section>
 
+              ${activeChartObj.availability !== 'unavailable' ? `
               <section class="panel">
                 <h3>${escHtml(perfTitle)}</h3>
                 <dl class="kv">
@@ -828,6 +835,8 @@ function renderStrategies(strategies) {
                   <dt>Range</dt><dd>${fmtShortDate(activeStats.start_date)} → ${fmtShortDate(activeStats.end_date)}</dd>
                 </dl>
               </section>
+
+              ` : ''}
 
               ${liveTrade && liveTrade.enabled ? `
               <section class="panel">
@@ -864,19 +873,6 @@ function renderStrategies(strategies) {
                 </dl>
               </section>
               ` : ''}
-
-              <section class="panel">
-                <h3>Full-History Replay</h3>
-                <dl class="kv">
-                  <dt>Range</dt><dd>${escHtml(fullHistory.start_date || '—')} → ${escHtml(fullHistory.end_date || '—')}</dd>
-                  <dt>Final value</dt><dd>${fmtMoney(fullHistory.current_value)}</dd>
-                  <dt>P/L</dt><dd>${fmtPct(fullHistory.pnl_pct)}</dd>
-                  <dt>Annual return</dt><dd>${fmtPct(fullHistory.annual_return_pct)}</dd>
-                  <dt>Max drawdown</dt><dd>${fmtPct(fullHistory.max_drawdown_pct)}</dd>
-                  <dt>Trading days</dt><dd>${fullHistory.trading_days == null ? '—' : fullHistory.trading_days}</dd>
-                  <dt>Trades</dt><dd>${fullHistory.trades == null ? '—' : fullHistory.trades}</dd>
-                </dl>
-              </section>
 
               ${(health.issues && health.issues.length) ? `
               <section class="panel">
