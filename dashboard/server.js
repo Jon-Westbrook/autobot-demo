@@ -22,7 +22,6 @@ const BASE_PATH = (() => {
 const AUTH_FILE = process.env.AUTH_FILE || "/srv/data/todo-auth.json";
 const AUTOBOT_ROOT = process.env.AUTOBOT_ROOT || "/srv/autobot";
 const STATUS_SCRIPT = `${AUTOBOT_ROOT}/status.py`;
-const DAILY_REPORT_SCRIPT = `${AUTOBOT_ROOT}/daily_report.py`;
 const PYTHON_MAX_BUFFER = 16 * 1024 * 1024;
 
 const validTokens = new Map();
@@ -52,18 +51,6 @@ function requireAuth(req, res, next) {
   next();
 }
 
-function runPython(file) {
-  const result = spawnSync("python3", [file], {
-    encoding: "utf8",
-    timeout: 30000,
-    maxBuffer: PYTHON_MAX_BUFFER,
-  });
-  if (result.error) throw result.error;
-  if (result.status !== 0) {
-    throw new Error((result.stderr || result.stdout || `python exited ${result.status}`).trim());
-  }
-  return result.stdout;
-}
 
 function runDashboardJson() {
   const result = spawnSync("python3", [STATUS_SCRIPT, "--json", "--with-charts"], {
@@ -108,13 +95,6 @@ app.get(routePath("/api/dashboard"), requireAuth, (req, res) => {
   }
 });
 
-app.get(routePath("/api/report"), requireAuth, (req, res) => {
-  try {
-    res.json({ text: runPython(DAILY_REPORT_SCRIPT) });
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
 
 app.listen(PORT, HOST, () => {
   const suffix = BASE_PATH || "/";
