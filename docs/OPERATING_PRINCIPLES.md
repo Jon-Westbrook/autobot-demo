@@ -50,12 +50,11 @@ Conservatism means refusing to invent data, not discarding real data.
 
 ## Earn promotion
 
-Discovery -> risk refinement -> promotion validation -> canonical replay evidence ->
-modeled -> paper -> tiny live -> scaled live.
+Discovery -> promotion validation -> canonical replay evidence -> modeled -> paper ->
+tiny live -> scaled live.
 
-Discovery and refinement are different objectives and are never compared to each
-other. Promotion validation is independent of both: it reads a window no objective
-was allowed to see, and nothing it reports feeds a score. Repeatedly optimising
+Promotion validation is independent of the search: it reads a window no objective was
+allowed to see, and nothing it reports feeds a score. Repeatedly optimising
 against the final test destroys the only unbiased estimate available.
 
 Test friction and stress costs, the reserved holdout, rolling-window stability, path
