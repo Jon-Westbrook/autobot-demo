@@ -537,7 +537,7 @@ function renderResearch(payload) {
     <article class="strategy-card">
       <div class="card-header">
         <div class="card-title">
-          <h2>${escHtml(best.stage || 'RESEARCH')}</h2>
+          <h2>CHAMPION</h2>
           <div class="meta">
             <span>candidate ${escHtml(best.candidate_sha || '—')}</span>
             <span class="muted">·</span>
@@ -581,10 +581,9 @@ function renderResearch(payload) {
           ${kv([
             ['Window', `${escHtml(fmtShortDate(window.start))} → ${escHtml(fmtShortDate(window.end))}`],
             ['Sessions scored', fmtInt(window.sessions)],
-            ['Early half, above cash', fmtPctOf(best.early_excess_annual_return)],
-            ['Late half, above cash', fmtPctOf(best.late_excess_annual_return)],
-            ['Early half, excess MAR', fmtRatio(best.early_excess_mar)],
-            ['Late half, excess MAR', fmtRatio(best.late_excess_mar)],
+            ['Boundary (pinned)', escHtml(fmtShortDate(best.development_end))],
+            ['Above cash', fmtPctOf(best.excess_annual_return)],
+            ['Excess MAR', fmtRatio(best.excess_mar)],
             ['Modelled cash Annual return', fmtPctOf(best.cash_annual_return)],
             ['Annual return excluding interest', fmtPctOf(best.annual_return_ex_cash)],
           ])}
@@ -629,12 +628,11 @@ function renderRuns(runs) {
     <tr>
       <td>${escHtml(run.experiment_id || '—')}</td>
       <td>${escHtml(run.candidate_sha || '—')}</td>
-      <td>${escHtml(run.stage || '—')}</td>
       <td class="${escHtml(run.status || '')}">${escHtml(run.status || '—')}</td>
       <td>${run.score ? escHtml(fmtRatio(run.score, 4)) : '<span class="kv-empty">—</span>'}</td>
     </tr>`).join('');
   return `<table class="runs-table">
-      <thead><tr><th>Experiment</th><th>Candidate</th><th>Stage</th><th>Status</th><th>Score</th></tr></thead>
+      <thead><tr><th>Experiment</th><th>Candidate</th><th>Status</th><th>Score</th></tr></thead>
       <tbody>${rows}</tbody></table>`;
 }
 
@@ -772,8 +770,8 @@ function renderOverview(payload) {
       <div class="overview-note">${escHtml(summary.stage || '')} stage</div>
     </div>
     <div class="overview-card">
-      <div class="overview-label">Research stage</div>
-      <div class="overview-value cyan">${escHtml(summary.research_stage || '—')}</div>
+      <div class="overview-label">Objective</div>
+      <div class="overview-value cyan">ABOVE CASH</div>
       <div class="overview-note">${escHtml(best.objective || '')}</div>
     </div>
     <div class="overview-card">
