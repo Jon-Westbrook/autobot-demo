@@ -75,8 +75,37 @@ api.setStage('research');
 const research = nodes['stage-view'].innerHTML;
 const holdout = (payload.promotion || {}).final_holdout || {};
 if (holdout.excess_annual_return !== null && holdout.excess_annual_return !== undefined) {
-  const figure = (holdout.excess_annual_return * 100).toFixed(2);
-  check(`research view hides the holdout figure ${figure}%`, !research.includes(figure));
+  // Match the rendered percentage, not a bare digit run: chart path coordinates are full
+  // of numbers, and "41.04" once matched "L641.04,105.21" with nothing leaked at all.
+  const figure = `${(holdout.excess_annual_return * 100).toFixed(2)}%`;
+  check(`research view hides the holdout figure ${figure}`, !research.includes(figure));
+  // The structural version of the same claim, independent of how anything renders: no
+  // value anywhere in the research payload equals a holdout figure.
+  // Only figures measured *on* the reserved tail. `final_holdout.development_*` are the
+  // development numbers the report carries for contrast, and the research view is of
+  // course allowed to show those.
+  const holdoutValues = ['excess_annual_return', 'excess_annual_return_decay', 'max_drawdown']
+    .map(key => holdout[key]).filter(value => typeof value === 'number');
+  const leaked = [];
+  const walk = (node, trail) => {
+    if (node === null || node === undefined) return;
+    if (Array.isArray(node)) { node.forEach((v, i) => walk(v, `${trail}[${i}]`)); return; }
+    if (typeof node === 'object') {
+      for (const [k, v] of Object.entries(node)) {
+        if (/holdout/i.test(k) && typeof v === 'number') leaked.push(`${trail}.${k}`);
+        walk(v, `${trail}.${k}`);
+      }
+      return;
+    }
+    if (typeof node === 'number' && holdoutValues.some(v => v !== 0 && Math.abs(v - node) < 1e-12)) {
+      leaked.push(`${trail}=${node}`);
+    }
+  };
+  walk(payload.research, 'research');
+  // `final_holdout_reserved_sessions` is a count of what is withheld, not a figure from it.
+  const real = leaked.filter(item => !item.includes('final_holdout_reserved_sessions'));
+  check(`research payload carries no holdout figure${real.length ? ': ' + real.slice(0, 3) : ''}`,
+        real.length === 0);
 }
 check('research view names the reserved sessions', research.includes('reserved as the final holdout'));
 
