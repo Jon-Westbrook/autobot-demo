@@ -40,20 +40,36 @@ function safeReadJson(file, defaultVal = {}) {
 }
 
 function getAuthConfig() {
-  return safeReadJson(AUTH_FILE, { code: "000000" });
+  try {
+    const auth = JSON.parse(readFileSync(AUTH_FILE, "utf8"));
+    if (!auth || typeof auth !== "object" || Array.isArray(auth)
+        || typeof auth.code !== "string" || !auth.code.trim()) return null;
+    const seconds = Number(auth.cookieMaxAge);
+    return {...auth, cookieMaxAge: Number.isFinite(seconds) && seconds > 0 ? seconds : 2592000};
+  } catch {
+    return null;
+  }
 }
 
 function requireAuth(req, res, next) {
   const auth = req.headers.authorization;
   if (!auth || !auth.startsWith("Bearer ")) return res.status(401).json({ error: "Unauthorized" });
   const token = auth.slice(7);
-  if (!validTokens.has(token)) return res.status(401).json({ error: "Unauthorized" });
+  const session = validTokens.get(token);
+  if (!session) return res.status(401).json({ error: "Unauthorized" });
+  const config = getAuthConfig();
+  if (!config) return res.status(503).json({ error: "Authentication unavailable" });
+  if (Date.now() - session.created >= config.cookieMaxAge * 1000) {
+    validTokens.delete(token);
+    return res.status(401).json({ error: "Unauthorized" });
+  }
   next();
 }
 
 
-function runDashboardJson() {
-  const result = spawnSync("python3", [STATUS_SCRIPT, "--json", "--with-charts"], {
+function runDashboardJson(view) {
+  const option = view === "trading" ? "--dashboard-trading" : "--dashboard-research";
+  const result = spawnSync("python3", [STATUS_SCRIPT, option], {
     encoding: "utf8",
     timeout: 30000,
     maxBuffer: PYTHON_MAX_BUFFER,
@@ -65,8 +81,12 @@ function runDashboardJson() {
   return JSON.parse(result.stdout);
 }
 
-if (BASE_PATH) {
-  app.get("/", (req, res) => res.redirect(BASE_PATH));
+const shell = readFileSync(`${__dirname}/index.html`, "utf8")
+  .replaceAll("'__AUTOBOT_BASE_PATH__'", JSON.stringify(BASE_PATH));
+const sendShell = (_req, res) => res.type("html").send(shell);
+for (const route of new Set(["/", "/research", "/trading", routePath("/"),
+                             routePath("/research"), routePath("/trading")])) {
+  app.get(route, sendShell);
 }
 
 app.use(BASE_PATH || "/", express.static(__dirname));
@@ -74,12 +94,13 @@ app.use(BASE_PATH || "/", express.static(__dirname));
 app.post(routePath("/api/auth"), (req, res) => {
   const { code } = req.body;
   const config = getAuthConfig();
+  if (!config) return res.status(503).json({ error: "Authentication unavailable" });
   if (code !== config.code) return res.status(403).json({ error: "Nope." });
 
   const token = randomUUID();
   validTokens.set(token, { created: Date.now() });
 
-  const maxAge = (config.cookieMaxAge || 2592000) * 1000;
+  const maxAge = config.cookieMaxAge * 1000;
   for (const [currentToken, value] of validTokens) {
     if (Date.now() - value.created > maxAge) validTokens.delete(currentToken);
   }
@@ -87,9 +108,17 @@ app.post(routePath("/api/auth"), (req, res) => {
   res.json({ token, maxAge: config.cookieMaxAge });
 });
 
-app.get(routePath("/api/dashboard"), requireAuth, (req, res) => {
+app.get(routePath("/api/dashboard/research"), requireAuth, (req, res) => {
   try {
-    res.json(runDashboardJson());
+    res.json(runDashboardJson("research"));
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get(routePath("/api/dashboard/trading"), requireAuth, (req, res) => {
+  try {
+    res.json(runDashboardJson("trading"));
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
