@@ -20,6 +20,10 @@ const checks = [
     && !html.includes('Modeled state is reported')],
   ['research score label and recent fields', html.includes('score_label')
     && html.includes('development_max_drawdown') && html.includes('Current champion')],
+  ['metric windows and chart provenance are explicit', html.includes('Full-history Annual return, full-history Sharpe, and full-history maximum drawdown')
+    && html.includes('Verified development history')
+    && html.includes('data.score_label')
+    && html.includes('final verified chart point')],
   ['four summary tiles with research heading and percentage score', (html.match(/class="tile"/g) || []).length === 4
     && html.includes('research-heading') && html.includes('pct(c.score)')],
   ['chart uses actual equity values with grid and value labels', html.includes('stroke="#22293a"')
