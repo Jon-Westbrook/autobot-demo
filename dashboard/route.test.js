@@ -97,3 +97,30 @@ test("a stale 401 cannot clear a reauthenticated session or replace its route", 
   assert.match(nodes.get("view").innerHTML, /No promoted strategy lanes/);
   assert.equal(runInContext("route", context), "trading");
 });
+
+test("lifecycle tabs stay inside each lane and selections are independent", () => {
+  const {context} = dashboard();
+  const lanes = [
+    {lane_id: "lane-a", display_name: "Lane A", modeled_enabled: true, paper_enabled: true,
+      live_enabled: true, last_run_ts: "2026-10-01T15:40:00Z", current_asset: "CASH",
+      target_asset: "ASSET_B", decision_reason: "verified runtime record"},
+    {lane_id: "lane-b", display_name: "Lane B", modeled_enabled: true, paper_enabled: true,
+      live_enabled: true},
+  ];
+  context.fixtures = {lanes};
+  runInContext("trading = fixtures", context);
+  let html = context.renderTrading({lanes});
+  assert.equal((html.match(/role="tablist"/g) || []).length, 2);
+  assert.equal((html.match(/No verified data for this stage/g) || []).length, 2);
+  runInContext("selectLaneStage(0, 'modeled')", context);
+  html = context.renderTrading(context.fixtures);
+  assert.match(html, /verified runtime record/);
+
+  runInContext("selectLaneStage(0, 'paper')", context);
+  html = context.renderTrading(context.fixtures);
+  const laneA = html.slice(html.indexOf("Lane A"), html.indexOf("Lane B"));
+  const laneB = html.slice(html.indexOf("Lane B"));
+  assert.match(laneA, /role="tab" aria-selected="true" class="active" onclick="selectLaneStage\(0,'paper'\)">Paper/);
+  assert.match(laneB, /role="tab" aria-selected="true" class="active" onclick="selectLaneStage\(1,'historical'\)">Historical/);
+  assert.match(laneB, /No verified data for this stage/);
+});
