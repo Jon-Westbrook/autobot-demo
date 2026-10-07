@@ -19,11 +19,14 @@ const checks = [
     && html.includes('function renderTrading') && !html.includes('function laneTab')
     && !html.includes('Modeled state is reported')],
   ['research score label and recent fields', html.includes('score_label')
-    && html.includes('development_max_drawdown') && html.includes('Current champion')],
-  ['metric windows and chart provenance are explicit', html.includes('Full-history Annual return, full-history Sharpe, and full-history maximum drawdown')
-    && html.includes('Verified development history')
-    && html.includes('data.score_label')
-    && html.includes('final verified chart point')],
+    && html.includes('data.recent||[]') && html.includes('Current champion')],
+  ['full-history in-sample metrics and objective score windows are explicit', html.includes('Full-history in-sample Annual return')
+    && html.includes('Full-history in-sample Sharpe')
+    && html.includes('Full-history in-sample max drawdown')
+    && html.includes('full-history in-sample Annual return, Sharpe, and maximum drawdown metrics summarize the displayed full development-history window')
+    && html.includes('Objective score is separate and uses ${esc(data.score_label)}')
+    && html.includes('final verified chart point')
+    && !html.includes('displayed Annual return, Sharpe, and maximum drawdown are development-window metrics')],
   ['four summary tiles with research heading and percentage score', (html.match(/class="tile"/g) || []).length === 4
     && html.includes('research-heading') && html.includes('pct(c.score)')],
   ['chart uses actual equity values with grid and value labels', html.includes('stroke="#22293a"')
