@@ -858,7 +858,7 @@ function renderFoundation(payload) {
 
 function setLoading(active) {
   isLoading = active;
-  const button = document.querySelector('.refresh-btn');
+  const button = document.querySelector('button.refresh-btn');
   if (button) {
     button.disabled = active;
     button.textContent = active ? 'LOADING...' : 'REFRESH';

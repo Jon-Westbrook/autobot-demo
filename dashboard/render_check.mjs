@@ -18,15 +18,34 @@ const here = dirname(fileURLToPath(import.meta.url));
 const root = join(here, '..');
 
 const nodes = {};
-const makeNode = id => (nodes[id] = {
-  id, innerHTML: '', textContent: '', style: {}, value: '', disabled: false,
-  offsetWidth: 220, offsetHeight: 110,
-  classList: { add() {}, remove() {}, toggle() {} },
-  addEventListener() {},
-});
+const makeNode = id => {
+  const classes = new Set();
+  return nodes[id] = {
+    id, innerHTML: '', textContent: '', style: {}, value: '', disabled: false,
+    offsetWidth: 220, offsetHeight: 110,
+    classList: {
+      add: name => classes.add(name),
+      remove: name => classes.delete(name),
+      toggle: (name, force) => {
+        if (force === undefined ? !classes.has(name) : force) classes.add(name);
+        else classes.delete(name);
+        return classes.has(name);
+      },
+      contains: name => classes.has(name),
+    },
+    addEventListener() {},
+  };
+};
+const refreshButton = makeNode('refresh-button');
+const archiveLink = makeNode('archive-link');
+archiveLink.textContent = 'ARCHIVED Lane 4';
+let lastQuerySelector;
 globalThis.document = {
   getElementById: id => nodes[id] || makeNode(id),
-  querySelector: () => makeNode('refresh-btn'),
+  querySelector: selector => {
+    lastQuerySelector = selector;
+    return selector === 'button.refresh-btn' ? refreshButton : archiveLink;
+  },
   createElement: () => makeNode('created'),
   body: { appendChild() {} },
 };
@@ -51,6 +70,18 @@ const failures = [];
 const check = (label, condition) => {
   if (!condition) failures.push(label);
 };
+
+api.setLoading(true);
+check('loading targets the refresh button selector', lastQuerySelector === 'button.refresh-btn');
+check('loading disables and relabels REFRESH', refreshButton.disabled
+  && refreshButton.textContent === 'LOADING...');
+check('loading leaves the archive link alone', !archiveLink.disabled
+  && archiveLink.textContent === 'ARCHIVED Lane 4');
+api.setLoading(false);
+check('loading restores the refresh button label', refreshButton.textContent === 'REFRESH');
+check('loading re-enables the refresh button', !refreshButton.disabled);
+check('loading removes the refresh button class', !refreshButton.classList.contains('loading-pulse'));
+check('loading leaves the archive link label unchanged', archiveLink.textContent === 'ARCHIVED Lane 4');
 
 api.renderOverview(payload);
 api.renderLifecycle(payload);
