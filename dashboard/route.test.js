@@ -74,6 +74,25 @@ test("refresh/poll invocation captures the route and is superseded by later navi
   assert.match(nodes.get("view").innerHTML, /No promoted strategy lanes/);
 });
 
+test("Research chart uses its payload score label rather than global route state", () => {
+  const {context} = dashboard();
+  const scoreLabel = "Excess Annual return over modeled cash · 2023-01-01 through 2024-08-01";
+  const payload = {
+    champion: {score: 0.12, annual_return: 0.15, sharpe: 1.2, max_drawdown: -0.2,
+      experiment_id: "api-champion", candidate_sha: "abc123", evaluator_version: "v1",
+      objective: "Excess Annual return", objective_sentence: "Development objective"},
+    chart: {availability: "available", development_start: "2023-01-01",
+      development_end: "2024-08-01", ending_equity: 12000, gap_count: 0,
+      points: [{date: "2023-01-01", equity: 10000}, {date: "2024-08-01", equity: 12000}]},
+    score_label: scoreLabel,
+    counts: {}, activity: {}, recent: [],
+  };
+  runInContext("research = {score_label: 'stale global route label'}", context);
+  const html = context.renderResearch(payload);
+  assert.ok(html.includes(`Objective score is separate and uses ${scoreLabel}`));
+  assert.doesNotMatch(html, /Objective score is separate and uses stale global route label/);
+});
+
 test("Research renders safe recent rows and an honest empty state", () => {
   const {context} = dashboard();
   const fixture = {
@@ -129,7 +148,7 @@ test("chart renders decimal/exponent strings and never bridges invalid or out-of
     ],
   };
 
-  const html = context.chart(data);
+  const html = context.chart({...data, score_label: "fixture score window"});
   const paths = [...html.matchAll(/<polyline[^>]* points="([^"]*)"/g)];
   assert.equal(paths.length, 2, "valid exponent marks render on either side of invalid gaps");
   assert.equal(paths[0][1].split(" ").length, 2);
@@ -137,6 +156,7 @@ test("chart renders decimal/exponent strings and never bridges invalid or out-of
   assert.doesNotMatch(html, /NaN|undefined/);
   assert.match(html, /\$15,250/, "axis values are computed from parsed exponent strings");
   assert.match(html, /3 missing marks shown as gaps/);
+  assert.match(html, /Objective score is separate and uses fixture score window/);
   assert.equal(data.points[0].equity, "1e4", "chart geometry parsing does not rewrite source values");
 });
 

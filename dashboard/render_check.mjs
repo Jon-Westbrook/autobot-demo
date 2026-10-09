@@ -25,7 +25,9 @@ const checks = [
     && html.includes('Full-history in-sample Sharpe')
     && html.includes('Full-history in-sample max drawdown')
     && html.includes('full-history in-sample Annual return, Sharpe, and maximum drawdown metrics summarize this development window through the cutoff')
-    && html.includes('Objective score is separate and uses ${esc(data.score_label)}')
+    && html.includes('function chart(data){')
+     && html.includes('Objective score is separate and uses ${esc(data.score_label)}')
+     && html.includes('${chart({...data.chart,score_label:data.score_label})}')
     && html.includes('Verified development history · ${esc(data.development_start)} through ${esc(data.development_end)}')
     && html.includes('Starting equity comes from the first verified numeric mark; ending equity: ${esc(money(data.ending_equity))}')
     && !html.includes('displayed Annual return, Sharpe, and maximum drawdown are development-window metrics')],
