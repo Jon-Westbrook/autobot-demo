@@ -140,13 +140,16 @@ test("Research discloses legacy SHA availability only when a legacy row is prese
   assert.ok(legacyHtml.includes("Legacy rows: full source SHA-256 is unavailable."));
   assert.ok(legacyHtml.includes("1 distinct SHA-12 prefixes"));
   assert.ok(legacyHtml.includes(`Full candidate SHA-256: <code>${fullSha}</code>`));
-  assert.match(legacyHtml, /c{12} · SHA-12 prefix/);
+  assert.match(legacyHtml, /c{12} · SHA-12 prefix \(full unavailable\)/);
 
   const currentHtml = context.renderResearch({...fixture, recent: [{
     ...fixture.recent[0], candidate_sha: fullSha,
     candidate_identity: "SHA-256", full_source_sha_available: true,
   }]});
   assert.ok(!currentHtml.includes("Legacy rows: full source SHA-256 is unavailable."));
+  assert.match(currentHtml, /a{12} · SHA-256 prefix/);
+  assert.ok(currentHtml.includes(`Full candidate SHA-256: <code>${fullSha}</code>`),
+    "the champion evidence identity keeps the full current SHA-256");
 });
 
 test("equity parser accepts finite positive numbers and strict ASCII decimal/exponent strings", () => {

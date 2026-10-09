@@ -30,6 +30,9 @@ const checks = [
     && researchRenderer.includes('Legacy rows: full source SHA-256 is unavailable.')
     && researchRenderer.includes('n.distinct_sha12_prefixes')
     && researchRenderer.includes('distinct SHA-12 prefixes')
+    && researchRenderer.includes("r.full_source_sha_available===true?'SHA-256 prefix'")
+    && researchRenderer.includes("r.full_source_sha_available===false?'SHA-12 prefix (full unavailable)'")
+    && researchRenderer.includes("String(r.candidate_sha??'').slice(0,12)")
     && !html.includes('renderResearchBase') && !researchRenderer.includes('.replace(')],
   ['development metrics and objective score windows are explicit', researchRenderer.includes('<strong>Development Annual return</strong>')
     && researchRenderer.includes('<strong>Development Sharpe</strong>')
