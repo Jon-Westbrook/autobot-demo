@@ -6,8 +6,10 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const html = readFileSync(join(here, 'index.html'), 'utf8');
 const server = readFileSync(join(here, 'server.js'), 'utf8');
-const researchRenderer = html.match(/function renderResearch\(data\)\{([\s\S]*?)<\/script>/)?.[1] ?? '';
+const researchRenderers = [...html.matchAll(/function renderResearch\(data\)\{([\s\S]*?)\n/g)];
+const researchRenderer = researchRenderers[0]?.[1] ?? '';
 const checks = [
+  ['exactly one authoritative Research renderer', [...html.matchAll(/function renderResearch\(/g)].length === 1],
   ['shared brand header', /class="topbar"[\s\S]*?AUTOBOT[\s\S]*?class="nav"/.test(html)],
   ['Research and Trading text navigation', /data-route="research">Research/.test(html)
     && /data-route="trading">Trading/.test(html)],
@@ -22,17 +24,26 @@ const checks = [
   ['research score label and recent fields', html.includes('score_label')
     && html.includes('Array.isArray(data.recent)?data.recent:[]')
     && html.includes('No verified recent experiments.') && html.includes('Current champion')],
-  ['full-history in-sample metrics and objective score windows are explicit', html.includes('Full-history in-sample Annual return')
-    && html.includes('Full-history in-sample Sharpe')
-    && html.includes('Full-history in-sample max drawdown')
+  ['legacy SHA disclosure and distinct SHA-12 prefix count render directly',
+    researchRenderer.includes('recent.some(r=>r.full_source_sha_available===false)')
+    && researchRenderer.includes('hasLegacyRows?')
+    && researchRenderer.includes('Legacy rows: full source SHA-256 is unavailable.')
+    && researchRenderer.includes('n.distinct_sha12_prefixes')
+    && researchRenderer.includes('distinct SHA-12 prefixes')
+    && !html.includes('renderResearchBase') && !researchRenderer.includes('.replace(')],
+  ['development metrics and objective score windows are explicit', researchRenderer.includes('<strong>Development Annual return</strong>')
+    && researchRenderer.includes('<strong>Development Sharpe</strong>')
+    && researchRenderer.includes('<strong>Development max drawdown</strong>')
     && html.includes('full-history in-sample Annual return, Sharpe, and maximum drawdown metrics summarize this development window through the cutoff')
     && html.includes('function chart(data){')
      && html.includes('Objective score is separate and uses ${esc(data.score_label)}')
      && researchRenderer.includes('${chart({...data.chart,score_label:data.score_label})}')
-    && html.includes('Verified development history · ${esc(data.development_start)} through ${esc(data.development_end)}')
+     && researchRenderer.includes('Evidence details')
+     && html.includes('Verified development history · ${esc(data.development_start)} through ${esc(data.development_end)}')
     && html.includes('Starting equity comes from the first verified numeric mark; ending equity: ${esc(money(data.ending_equity))}')
     && !html.includes('displayed Annual return, Sharpe, and maximum drawdown are development-window metrics')],
-  ['four summary tiles with research heading and percentage score', (html.match(/class="tile"/g) || []).length === 4
+  ['four summary tiles with research heading and percentage score',
+    (researchRenderer.match(/class="tile"/g) || []).length === 4
     && html.includes('research-heading') && html.includes('pct(c.score)')],
   ['chart uses actual equity values with grid and value labels', html.includes('stroke="#22293a"')
     && html.includes('money(value)')

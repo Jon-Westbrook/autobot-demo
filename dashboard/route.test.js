@@ -116,8 +116,37 @@ test("Research renders safe recent rows and an honest empty state", () => {
 
   html = context.renderResearch({...fixture, recent: []});
   assert.match(html, /No verified recent experiments\./);
-  assert.match(html, /colspan="4"/);
+  assert.match(html, /colspan="5"/);
   assert.doesNotMatch(html, /table is not defined/);
+});
+
+test("Research discloses legacy SHA availability only when a legacy row is present", () => {
+  const {context} = dashboard();
+  const fullSha = "a".repeat(64);
+  const fixture = {
+    champion: {experiment_id: "champion-run", candidate_sha256: fullSha,
+      dataset_manifest_sha256: "b".repeat(64), evaluator_version: "v1",
+      objective: "Excess Annual return", objective_sentence: "Development objective"},
+    chart: {availability: "unavailable", points: []},
+    counts: {valid_attempts: 1, scored: 1, distinct_sha12_prefixes: 1},
+    activity: {state: "unknown", heartbeat: null},
+    score_label: "Development-only fixture",
+    recent: [{experiment_id: "legacy-run", candidate_sha: "c".repeat(12),
+      candidate_identity: "SHA-12 prefix", full_source_sha_available: false,
+      status: "keep", score: 0.2, development_annual_return: 0.1}],
+  };
+
+  const legacyHtml = context.renderResearch(fixture);
+  assert.ok(legacyHtml.includes("Legacy rows: full source SHA-256 is unavailable."));
+  assert.ok(legacyHtml.includes("1 distinct SHA-12 prefixes"));
+  assert.ok(legacyHtml.includes(`Full candidate SHA-256: <code>${fullSha}</code>`));
+  assert.match(legacyHtml, /c{12} · SHA-12 prefix/);
+
+  const currentHtml = context.renderResearch({...fixture, recent: [{
+    ...fixture.recent[0], candidate_sha: fullSha,
+    candidate_identity: "SHA-256", full_source_sha_available: true,
+  }]});
+  assert.ok(!currentHtml.includes("Legacy rows: full source SHA-256 is unavailable."));
 });
 
 test("equity parser accepts finite positive numbers and strict ASCII decimal/exponent strings", () => {
