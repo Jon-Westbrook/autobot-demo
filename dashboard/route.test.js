@@ -165,7 +165,7 @@ test("equity parser accepts finite positive numbers and strict ASCII decimal/exp
   assert.equal(runInContext("equityNumber(true)", context), null);
 });
 
-test("chart renders decimal/exponent strings and never bridges invalid or out-of-range gaps", () => {
+test("chart uses a positive log axis and never bridges invalid or out-of-range gaps", () => {
   const {context} = dashboard();
   const data = {
     availability: "available",
@@ -191,10 +191,47 @@ test("chart renders decimal/exponent strings and never bridges invalid or out-of
   assert.equal(paths[0][1].split(" ").length, 2);
   assert.equal(paths[1][1].split(" ").length, 2);
   assert.doesNotMatch(html, /NaN|undefined/);
-  assert.match(html, /\$15,250/, "axis values are computed from parsed exponent strings");
+  assert.match(html, /Equity \(USD · log scale\)/, "axis interpretation is explicit");
+  assert.match(html, /logarithmic scale/, "chart accessibility description names its scale");
+  const axisValues = [...html.matchAll(/data-axis-value="([^"]+)"/g)].map(match => Number(match[1]));
+  assert.equal(axisValues.length, 5, "the restrained axis renders five ticks");
+  assert.ok(axisValues.every(value => Number.isFinite(value) && value > 0), "log ticks are finite and positive");
+  assert.doesNotMatch(html, /-\$|\$-\d/, "positive equity series has no negative currency tick labels");
+  assert.ok(axisValues.every(value => value >= 9500 && value <= 15750), "tick range is derived from finite positive marks");
   assert.match(html, /3 missing marks shown as gaps/);
   assert.match(html, /Objective score is separate and uses fixture score window/);
   assert.equal(data.points[0].equity, "1e4", "chart geometry parsing does not rewrite source values");
+});
+
+test("chart bounds extreme positive equities and formats their ticks without inventing data", () => {
+  const {context} = dashboard();
+  const points = [
+    {date: "min-a", equity: Number.MIN_VALUE},
+    {date: "min-b", equity: Number.MIN_VALUE},
+    {date: "gap", equity: null},
+    {date: "max-a", equity: Number.MAX_VALUE},
+    {date: "max-b", equity: Number.MAX_VALUE},
+  ];
+  const html = context.chart({availability: "available", points, gap_count: 1,
+    development_start: "min-a", development_end: "max-b", ending_equity: Number.MAX_VALUE,
+    score_label: "extreme fixture"});
+
+  assert.match(html, /<svg/, "extreme finite marks still render a chart");
+  const axisValues = [...html.matchAll(/data-axis-value="([^"]+)"/g)].map(match => Number(match[1]));
+  assert.ok(axisValues.length > 0, "at least one representable tick remains");
+  assert.ok(axisValues.every(value => Number.isFinite(value) && value > 0),
+    "all rendered ticks are finite and positive");
+  assert.doesNotMatch(html, /\$0(?:\b|\.)|Infinity|NaN/,
+    "tiny/huge positive values must not be mislabeled as zero or non-finite");
+  assert.match(html, /\$4\.94e-324/, "sub-dollar tick labels use scientific notation");
+  assert.match(html, /\$1\.80e\+308/, "huge tick labels use scientific notation");
+  const paths = [...html.matchAll(/<polyline[^>]* points="([^"]*)"/g)];
+  assert.equal(paths.length, 2, "the null mark splits the original series into two segments");
+  assert.ok(paths.every(([, path]) => path.split(" ").length === 2),
+    "only the two source marks per segment are plotted");
+  assert.equal(points[0].equity, Number.MIN_VALUE);
+  assert.equal(points[2].equity, null, "the source null gap stays null");
+  assert.equal(points[4].equity, Number.MAX_VALUE);
 });
 
 test("a stale 401 cannot clear a reauthenticated session or replace its route", async () => {
