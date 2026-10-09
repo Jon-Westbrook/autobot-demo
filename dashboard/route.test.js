@@ -96,6 +96,50 @@ test("Research renders safe recent rows and an honest empty state", () => {
   assert.doesNotMatch(html, /table is not defined/);
 });
 
+test("equity parser accepts finite positive numbers and strict ASCII decimal/exponent strings", () => {
+  const {context} = dashboard();
+  assert.equal(runInContext("equityNumber('1234.50')", context), 1234.5);
+  assert.equal(runInContext("equityNumber('.5')", context), 0.5);
+  assert.equal(runInContext("equityNumber('1e3')", context), 1000);
+  assert.equal(runInContext("equityNumber('1.2E+4')", context), 12000);
+  assert.equal(runInContext("equityNumber(12)", context), 12);
+  for (const value of ["true", "' 12'", "'12 '", "'12\\n'", "'1e'", "'1e+'", "'1e9999'", "'1e-9999'", "'abc'", "'0'", "'-1'", "Infinity", "NaN"]) {
+    assert.equal(runInContext(`equityNumber(${value})`, context), null, `${value} must be rejected`);
+  }
+  assert.equal(runInContext("equityNumber(true)", context), null);
+});
+
+test("chart renders decimal/exponent strings and never bridges invalid or out-of-range gaps", () => {
+  const {context} = dashboard();
+  const data = {
+    availability: "available",
+    gap_count: 3,
+    development_start: "2024-01-01",
+    development_end: "2024-01-05",
+    ending_equity: "14000.5",
+    score_label: "fixture",
+    points: [
+      {date: "2024-01-01", equity: "1e4"},
+      {date: "2024-01-02", equity: "1.1E+4"},
+      {date: "2024-01-03", equity: null},
+      {date: "2024-01-04", equity: "1e9999"},
+      {date: "2024-01-05", equity: "1e-9999"},
+      {date: "2024-01-06", equity: "1.4e4"},
+      {date: "2024-01-07", equity: "1.5E+4"},
+    ],
+  };
+
+  const html = context.chart(data);
+  const paths = [...html.matchAll(/<polyline[^>]* points="([^"]*)"/g)];
+  assert.equal(paths.length, 2, "valid exponent marks render on either side of invalid gaps");
+  assert.equal(paths[0][1].split(" ").length, 2);
+  assert.equal(paths[1][1].split(" ").length, 2);
+  assert.doesNotMatch(html, /NaN|undefined/);
+  assert.match(html, /\$15,250/, "axis values are computed from parsed exponent strings");
+  assert.match(html, /3 missing marks shown as gaps/);
+  assert.equal(data.points[0].equity, "1e4", "chart geometry parsing does not rewrite source values");
+});
+
 test("a stale 401 cannot clear a reauthenticated session or replace its route", async () => {
   const {context, nodes, requests, storage} = dashboard();
   assert.equal(requests.length, 1);

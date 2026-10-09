@@ -33,11 +33,18 @@ const checks = [
     && html.includes('research-heading') && html.includes('pct(c.score)')],
   ['chart uses actual equity values with grid and value labels', html.includes('stroke="#22293a"')
     && html.includes('money(value)')
-    && html.includes('marks.map(point=>point.equity)')
-    && html.includes('y(point.equity)')],
+    && html.includes('equities=points.map(point=>equityNumber(point.equity))')
+    && html.includes('const marks=equities.filter(value=>value!==null)')
+    && html.includes('y(equities[i])')],
   ['chart x-axis endpoints use the first and last actual point dates', html.includes('${esc(points[0].date)}')
     && html.includes('${esc(points[points.length-1].date)}')],
-  ['chart preserves missing-mark gaps without interpolation or smoothing', html.includes('point=>typeof point.equity===\'number\'&&Number.isFinite(point.equity)&&point.equity>0')
+  ['chart parses numeric and strict ASCII decimal/exponent-string marks safely', html.includes('const equityNumber=value=>')
+    && html.includes('Number.isFinite(number)&&number>0')
+    && html.includes('[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+')
+    && html.includes('(?![\\s\\S])')
+    && html.includes('(?:[eE][+-]?[0-9]+)?')
+    && html.includes('Math.min(...marks)') && html.includes('y(equities[i])')],
+  ['chart preserves missing-mark gaps without interpolation or smoothing', html.includes('valid=equities.map(value=>value!==null)')
     && html.includes('else if(segment.length){segments.push(segment);segment=[]}')
     && html.includes('if(segment.length)segments.push(segment)')
     && html.includes('segments.filter(segment=>segment.length>1)')

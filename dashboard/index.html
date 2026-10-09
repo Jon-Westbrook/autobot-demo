@@ -24,15 +24,16 @@ document.querySelector('.brand').href=BASE+'/';document.querySelectorAll('.nav a
 document.querySelectorAll('.nav a').forEach(a=>a.addEventListener('click',e=>{e.preventDefault();navigate(a.dataset.route)}));window.addEventListener('popstate',()=>{route=currentRoute();loadRoute()});
 const money=v=>v==null?'—':Number(v).toLocaleString('en-US',{style:'currency',currency:'USD',maximumFractionDigits:0});
 const pct=v=>v==null?'—':(Number(v)*100).toFixed(2)+'%';const ratio=v=>v==null?'—':Number(v).toFixed(2);
+const equityNumber=value=>{if(typeof value==='number')return Number.isFinite(value)&&value>0?value:null;if(typeof value!=='string'||! /^[+-]?(?:[0-9]+(?:\.[0-9]*)?|\.[0-9]+)(?:[eE][+-]?[0-9]+)?(?![\s\S])/.test(value))return null;const number=Number(value);return Number.isFinite(number)&&number>0?number:null};
 function chart(data){
  if(data?.availability!=='available'||!data.points?.length)return '<div class="empty">Verified champion development-history curve unavailable.</div>';
- const points=data.points,valid=points.map(point=>typeof point.equity==='number'&&Number.isFinite(point.equity)&&point.equity>0);
- const marks=points.filter((point,i)=>valid[i]);
+ const points=data.points,equities=points.map(point=>equityNumber(point.equity)),valid=equities.map(value=>value!==null);
+ const marks=equities.filter(value=>value!==null);
  if(marks.length<2)return '<div class="empty">Verified champion development-history curve unavailable.</div>';
- const w=960,h=250,left=78,right=18,top=16,bottom=36,plotH=h-top-bottom,lo=Math.min(...marks.map(point=>point.equity)),hi=Math.max(...marks.map(point=>point.equity)),span=hi-lo||Math.max(Math.abs(hi)*.02,1),low=lo-span*.05,high=hi+span*.05,range=high-low;
+ const w=960,h=250,left=78,right=18,top=16,bottom=36,plotH=h-top-bottom,lo=Math.min(...marks),hi=Math.max(...marks),span=hi-lo||Math.max(Math.abs(hi)*.02,1),low=lo-span*.05,high=hi+span*.05,range=high-low;
  const x=i=>left+i/(points.length-1)*(w-left-right),y=value=>top+(high-value)/range*plotH;
  const grid=Array.from({length:5},(_,i)=>{const value=high-i*range/4,yy=y(value);return `<line x1="${left}" y1="${yy}" x2="${w-right}" y2="${yy}" stroke="#22293a"/><text x="${left-8}" y="${yy+4}" text-anchor="end" fill="#92a1b8" font-size="11">${esc(money(value))}</text>`}).join('');
- const segments=[];let segment=[];points.forEach((point,i)=>{if(valid[i])segment.push(`${x(i)},${y(point.equity)}`);else if(segment.length){segments.push(segment);segment=[]}});if(segment.length)segments.push(segment);
+ const segments=[];let segment=[];points.forEach((point,i)=>{if(valid[i])segment.push(`${x(i)},${y(equities[i])}`);else if(segment.length){segments.push(segment);segment=[]}});if(segment.length)segments.push(segment);
  const paths=segments.filter(segment=>segment.length>1).map(segment=>`<polyline fill="none" stroke="#00f0ff" stroke-width="2" points="${segment.join(' ')}"/>`).join('');
  const gapText=data.gap_count?`${data.gap_count} missing mark${data.gap_count===1?'':'s'} shown as gaps; no data is invented or smoothed.`:'No missing marks.';
  return `<div class="objective">Verified development history · ${esc(data.development_start)} through ${esc(data.development_end)}. Starting equity comes from the first verified numeric mark; ending equity: ${esc(money(data.ending_equity))}. ${esc(gapText)} The full-history in-sample Annual return, Sharpe, and maximum drawdown metrics summarize this development window through the cutoff. Objective score is separate and uses ${esc(data.score_label)}.</div><div class="chart"><svg viewBox="0 0 ${w} ${h}" role="img" aria-label="Verified development-history champion equity with gaps at missing marks">${grid}${paths}<text x="${left}" y="${h-8}" fill="#92a1b8" font-size="11">${esc(points[0].date)}</text><text x="${w-right}" y="${h-8}" text-anchor="end" fill="#92a1b8" font-size="11">${esc(points[points.length-1].date)}</text></svg></div>`
