@@ -89,7 +89,12 @@ test("Research chart uses its payload score label rather than global route state
   };
   runInContext("research = {score_label: 'stale global route label'}", context);
   const html = context.renderResearch(payload);
-  assert.ok(html.includes(`Objective score is separate and uses ${scoreLabel}`));
+  assert.ok(html.includes('<svg'), "the available research chart is rendered");
+  assert.ok(html.includes(`Verified development history · 2023-01-01 through 2024-08-01.`
+    + ` Starting equity comes from the first verified numeric mark; ending equity: $12,000.`
+    + ` No missing marks. The full-history in-sample Annual return, Sharpe, and maximum drawdown metrics`
+    + ` summarize this development window through the cutoff. Objective score is separate and uses ${scoreLabel}.`),
+  "the rendered chart sentence must use the exact score window from its payload");
   assert.doesNotMatch(html, /Objective score is separate and uses stale global route label/);
 });
 

@@ -6,6 +6,7 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const html = readFileSync(join(here, 'index.html'), 'utf8');
 const server = readFileSync(join(here, 'server.js'), 'utf8');
+const researchRenderer = html.match(/function renderResearch\(data\)\{([\s\S]*?)<\/script>/)?.[1] ?? '';
 const checks = [
   ['shared brand header', /class="topbar"[\s\S]*?AUTOBOT[\s\S]*?class="nav"/.test(html)],
   ['Research and Trading text navigation', /data-route="research">Research/.test(html)
@@ -27,7 +28,7 @@ const checks = [
     && html.includes('full-history in-sample Annual return, Sharpe, and maximum drawdown metrics summarize this development window through the cutoff')
     && html.includes('function chart(data){')
      && html.includes('Objective score is separate and uses ${esc(data.score_label)}')
-     && html.includes('${chart({...data.chart,score_label:data.score_label})}')
+     && researchRenderer.includes('${chart({...data.chart,score_label:data.score_label})}')
     && html.includes('Verified development history · ${esc(data.development_start)} through ${esc(data.development_end)}')
     && html.includes('Starting equity comes from the first verified numeric mark; ending equity: ${esc(money(data.ending_equity))}')
     && !html.includes('displayed Annual return, Sharpe, and maximum drawdown are development-window metrics')],
