@@ -74,6 +74,28 @@ test("refresh/poll invocation captures the route and is superseded by later navi
   assert.match(nodes.get("view").innerHTML, /No promoted strategy lanes/);
 });
 
+test("Research renders safe recent rows and an honest empty state", () => {
+  const {context} = dashboard();
+  const fixture = {
+    champion: null,
+    chart: {availability: "unavailable", points: []},
+    counts: {valid_attempts: 1, scored: 1, distinct_candidates: 1},
+    activity: {state: "unknown", heartbeat: null},
+    score_label: "Development-only fixture",
+    recent: [{experiment_id: "fixture-run", status: "keep", score: 0.2,
+      development_annual_return: 0.1}],
+  };
+  let html = context.renderResearch(fixture);
+  assert.match(html, /fixture-run/);
+  assert.match(html, /Development Annual return/);
+  assert.doesNotMatch(html, /table is not defined/);
+
+  html = context.renderResearch({...fixture, recent: []});
+  assert.match(html, /No verified recent experiments\./);
+  assert.match(html, /colspan="4"/);
+  assert.doesNotMatch(html, /table is not defined/);
+});
+
 test("a stale 401 cannot clear a reauthenticated session or replace its route", async () => {
   const {context, nodes, requests, storage} = dashboard();
   assert.equal(requests.length, 1);

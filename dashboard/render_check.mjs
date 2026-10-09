@@ -19,7 +19,8 @@ const checks = [
     && html.includes('function renderTrading') && !html.includes('function laneTab')
     && !html.includes('Modeled state is reported')],
   ['research score label and recent fields', html.includes('score_label')
-    && html.includes('data.recent||[]') && html.includes('Current champion')],
+    && html.includes('Array.isArray(data.recent)?data.recent:[]')
+    && html.includes('No verified recent experiments.') && html.includes('Current champion')],
   ['full-history in-sample metrics and objective score windows are explicit', html.includes('Full-history in-sample Annual return')
     && html.includes('Full-history in-sample Sharpe')
     && html.includes('Full-history in-sample max drawdown')
