@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const html = readFileSync(join(here, 'index.html'), 'utf8');
 const server = readFileSync(join(here, 'server.js'), 'utf8');
-const researchRenderers = [...html.matchAll(/function renderResearch\(data\)\{([\s\S]*?)\n/g)];
+const researchRenderers = [...html.matchAll(/function renderResearch\(data\)\{([\s\S]*?)\n\}/g)];
 const researchRenderer = researchRenderers[0]?.[1] ?? '';
 const checks = [
   ['exactly one authoritative Research renderer', [...html.matchAll(/function renderResearch\(/g)].length === 1],
@@ -17,37 +17,41 @@ const checks = [
     && server.includes('"/research"') && server.includes('"/trading"')],
   ['separate authenticated data endpoints', server.includes('/api/dashboard/research')
     && server.includes('/api/dashboard/trading') && server.includes('requireAuth')],
-  ['no lifecycle-wide tabs or promotion panel', !/id="lifecycle"|renderLifecycle|promotion|final_holdout/i.test(html)],
-  ['Trading has an honest empty state and no template activity claims', html.includes('No promoted strategy lanes')
-    && html.includes('function renderTrading') && !html.includes('function laneTab')
-    && !html.includes('Modeled state is reported')],
-  ['research score label and recent fields', html.includes('score_label')
-    && html.includes('Array.isArray(data.recent)?data.recent:[]')
-    && html.includes('No verified recent experiments.') && html.includes('Current champion')],
-  ['legacy SHA disclosure and distinct SHA-12 prefix count render directly',
-    researchRenderer.includes('recent.some(r=>r.full_source_sha_available===false)')
-    && researchRenderer.includes('hasLegacyRows?')
-    && researchRenderer.includes('Legacy rows: full source SHA-256 is unavailable.')
-    && researchRenderer.includes('n.distinct_sha12_prefixes')
-    && researchRenderer.includes('distinct SHA-12 prefixes')
-    && researchRenderer.includes("r.full_source_sha_available===true?'SHA-256 prefix'")
-    && researchRenderer.includes("r.full_source_sha_available===false?'SHA-12 prefix (full unavailable)'")
-    && researchRenderer.includes("String(r.candidate_sha??'').slice(0,12)")
-    && !html.includes('renderResearchBase') && !researchRenderer.includes('.replace(')],
-  ['development metrics and objective score windows are explicit', researchRenderer.includes('<strong>Development Annual return</strong>')
-    && researchRenderer.includes('<strong>Development Sharpe</strong>')
-    && researchRenderer.includes('<strong>Development max drawdown</strong>')
-    && html.includes('full-history in-sample Annual return, Sharpe, and maximum drawdown metrics summarize this development window through the cutoff')
-    && html.includes('function chart(data){')
-     && html.includes('Objective score is separate and uses ${esc(data.score_label)}')
-     && researchRenderer.includes('${chart({...data.chart,score_label:data.score_label})}')
-     && researchRenderer.includes('Evidence details')
-     && html.includes('Verified development history · ${esc(data.development_start)} through ${esc(data.development_end)}')
-    && html.includes('Starting equity comes from the first verified numeric mark; ending equity: ${esc(money(data.ending_equity))}')
-    && !html.includes('displayed Annual return, Sharpe, and maximum drawdown are development-window metrics')],
-  ['four summary tiles with research heading and percentage score',
-    (researchRenderer.match(/class="tile"/g) || []).length === 4
-    && html.includes('research-heading') && html.includes('pct(c.score)')],
+  ['no lifecycle-wide tabs or promotion panel', !/id="lifecycle"|renderLifecycle|promotion panel|final_holdout/i.test(html)],
+  ['Trading has an honest empty state, research CTA and non-operational template', html.includes('No Active Strategies')
+    && html.includes('Go to Research →') && html.includes('function renderTrading')
+     && html.includes('<h2>Example Strategy</h2>') && html.includes('TEMPLATE')
+     && html.includes('Illustrative template · not an active or paper strategy') && html.includes('Verified historical series unavailable')
+     && html.includes('Unavailable: no verified strategy count for this example') && html.includes('Unavailable: no verified capital value')
+    && html.includes('Unavailable: no verified return value') && html.includes('Awaiting promotion')
+    && html.includes('No verified ${esc(stage)} data is available')
+    && !html.includes('renderDashboard') && !html.includes('dashboard-grid')],
+  ['Trading tiles use verified lane count and clearly unavailable financial values',
+    html.includes('["Strategies",String(count)')
+    && html.includes('["Capital","—","Unavailable: no verified capital value"]')
+    && html.includes('["Total Return","—","Unavailable: no verified return value"]')
+    && html.includes('count?"Status unavailable":"Awaiting promotion"')
+    && html.includes('Go to Research →') && !/\$0|READY/.test(html)],
+  ['research presents only ordinary Annual return and concise recent rows', researchRenderer.includes('pct(c.annual_return)')
+    && researchRenderer.includes('Standard compounded annual growth')
+    && researchRenderer.includes('<th>Annual return</th>')
+    && researchRenderer.includes('experimentDate(r.experiment_id)')
+    && !researchRenderer.includes('score_label') && !researchRenderer.includes('pct(c.score)')
+    && !researchRenderer.includes('pct(r.score)') && !/EXCESS Annual return|Excess Annual return|Best Score/.test(researchRenderer)],
+  ['champion keeps risk context and audit identity secondary', researchRenderer.includes('<strong>Sharpe</strong>')
+    && researchRenderer.includes('<strong>Max Drawdown</strong>')
+    && researchRenderer.includes('Champion audit identity') && researchRenderer.includes('Candidate SHA-256')
+    && !researchRenderer.includes('candidate_identity') && !researchRenderer.includes('Legacy rows')],
+  ['historical charts use concise labels without objective-score language', html.includes('function chart(data){')
+    && html.includes('Verified historical equity')
+    && html.includes('The chart uses verified historical marks through the development cutoff.')
+    && !html.includes('Objective score is separate')
+    && researchRenderer.includes('${chart(data.chart||{})}')
+    && html.includes("data.replay?'Five-year historical replay':'Verified historical equity'")
+    && html.includes('point.date<=cutoff')],
+  ['four summary tiles show standard Annual return', (researchRenderer.match(/class="tile"/g) || []).length === 4
+    && html.includes('research-heading') && researchRenderer.includes('pct(c.annual_return)')
+    && !researchRenderer.includes('pct(c.score)')],
   ['chart uses actual equity values with grid and value labels', html.includes('stroke="#22293a"')
     && html.includes('money(value)')
     && html.includes('equities=points.map(point=>equityNumber(point.equity))')
@@ -66,7 +70,20 @@ const checks = [
     && html.includes('if(segment.length)segments.push(segment)')
     && html.includes('segments.filter(segment=>segment.length>1)')
     && html.includes('missing mark${data.gap_count===1?\'\':\'s\'} shown as gaps; no data is invented or smoothed.')],
-  ['no sample/archive/demo interface reference', !/archive|fixture|illustrative/i.test(html + server)],
+  ['five-year replay is a distinct cutoff-filtered historical chart', html.includes('function fiveYearReplay')
+    && html.includes('point.date<=championCutoff') && html.includes('point.date<=cutoff')
+    && html.includes('fiveYearReplay(data.chart,c.development_end)')
+    && html.includes('Historical modeled results are not guarantees or live performance')
+    && html.includes('@media(max-width:620px){.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}')
+    && html.includes('@media(max-width:700px){#app')
+    && html.includes('.example-grid{display:block}')],
+  ['template metrics remain placeholders, with no fabricated performance', html.includes('no data plotted')
+    && html.includes("['Strategies','—','Unavailable: no verified strategy count for this example']")
+    && html.includes("['Capital','—','Unavailable: no verified capital value']")
+    && html.includes("['Total Return','—','Unavailable: no verified return value']")
+    && html.includes("['System','—','Unavailable: no verified system state for this example']")
+    && html.includes('no strategy, order activity, or performance claims')
+    && !/dashboard-grid|dashboard-panel|renderDashboard/.test(html)],
 ];
 const failed = checks.filter(([, ok]) => !ok);
 for (const [name, ok] of checks) console.log(`${ok ? 'PASS' : 'FAIL'} ${name}`);
