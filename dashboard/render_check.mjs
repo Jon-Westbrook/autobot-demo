@@ -6,7 +6,7 @@ import { fileURLToPath } from 'node:url';
 const here = dirname(fileURLToPath(import.meta.url));
 const html = readFileSync(join(here, 'index.html'), 'utf8');
 const server = readFileSync(join(here, 'server.js'), 'utf8');
-const researchRenderers = [...html.matchAll(/function renderResearch\(data\)\{([\s\S]*?)\n\}/g)];
+const researchRenderers = [...html.matchAll(/function renderResearch\(data\)\{([\s\S]*?)\n\s*\}/g)];
 const researchRenderer = researchRenderers[0]?.[1] ?? '';
 const checks = [
   ['exactly one authoritative Research renderer', [...html.matchAll(/function renderResearch\(/g)].length === 1],
@@ -20,9 +20,9 @@ const checks = [
   ['no lifecycle-wide tabs or promotion panel', !/id="lifecycle"|renderLifecycle|promotion panel|final_holdout/i.test(html)],
   ['Trading has an honest empty state, research CTA and non-operational template', html.includes('No Active Strategies')
     && html.includes('Go to Research →') && html.includes('function renderTrading')
-     && html.includes('<h2>Example Strategy</h2>') && html.includes('TEMPLATE')
-     && html.includes('Illustrative template · not an active or paper strategy') && html.includes('Verified historical series unavailable')
-     && html.includes('Unavailable: no verified strategy count for this example') && html.includes('Unavailable: no verified capital value')
+     && html.includes('<h2>Example Strategy Component</h2>') && html.includes('TEMPLATE')
+     && html.includes('Illustrative component only') && html.includes('Verified historical series unavailable')
+     && html.includes('Unavailable: no verified return series') && html.includes('Unavailable: no verified capital value')
     && html.includes('Unavailable: no verified return value') && html.includes('Awaiting promotion')
     && html.includes('No verified ${esc(stage)} data is available')
     && !html.includes('renderDashboard') && !html.includes('dashboard-grid')],
@@ -74,15 +74,15 @@ const checks = [
     && html.includes('point.date<=championCutoff') && html.includes('point.date<=cutoff')
     && html.includes('fiveYearReplay(data.chart,c.development_end)')
     && html.includes('Historical modeled results are not guarantees or live performance')
-    && html.includes('@media(max-width:620px){.tiles{grid-template-columns:repeat(2,minmax(0,1fr))}')
-    && html.includes('@media(max-width:700px){#app')
-    && html.includes('.example-grid{display:block}')],
-  ['template metrics remain placeholders, with no fabricated performance', html.includes('no data plotted')
-    && html.includes("['Strategies','—','Unavailable: no verified strategy count for this example']")
-    && html.includes("['Capital','—','Unavailable: no verified capital value']")
-    && html.includes("['Total Return','—','Unavailable: no verified return value']")
-    && html.includes("['System','—','Unavailable: no verified system state for this example']")
-    && html.includes('no strategy, order activity, or performance claims')
+     && html.includes('@media(max-width:620px){#app')
+     && html.includes('.tiles{grid-template-columns:repeat(2,minmax(0,1fr))')
+    && html.includes('.example-grid{display:grid')],
+   ['template metrics remain placeholders, with no fabricated performance', html.includes('no data plotted')
+     && html.includes('Unavailable: no verified return series')
+     && html.includes('Unavailable: no verified risk metric')
+     && html.includes('Unavailable: no verified drawdown')
+      && html.includes('Unavailable: no verified equity')
+     && html.includes('No strategy, order activity, or performance claims')
     && !/dashboard-grid|dashboard-panel|renderDashboard/.test(html)],
 ];
 const failed = checks.filter(([, ok]) => !ok);

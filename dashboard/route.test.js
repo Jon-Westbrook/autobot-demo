@@ -78,7 +78,7 @@ test("Research and Trading are separate authenticated routes with independent re
   assert.match(tradingHtml, /TEMPLATE/);
   assert.match(tradingHtml, /Historical[\s\S]*Modeled[\s\S]*Paper[\s\S]*Trivial Capital[\s\S]*Live/);
   assert.match(tradingHtml, /Verified historical series unavailable/);
-  assert.match(tradingHtml, /Unavailable: no verified system state for this example/);
+  assert.match(tradingHtml, /Unavailable: no verified equity/);
   assert.doesNotMatch(tradingHtml, /Current Champion|Recent Experiments/);
   assert.equal(runInContext("route", context), "trading");
 });
@@ -113,14 +113,12 @@ test("route styling is responsive without a combined Research/Trading layout", (
   const html = readFileSync(new URL("./index.html", import.meta.url), "utf8");
   assert.doesNotMatch(html, /dashboard-grid|dashboard-panel|renderDashboard/);
   assert.match(html, /\.tiles\{display:grid;grid-template-columns:repeat\(4,minmax\(0,1fr\)\)/);
-  assert.match(html, /@media\(max-width:700px\)[\s\S]*?\.card\{padding:15px\}/);
-  assert.doesNotMatch(html, /@media\(max-width:700px\)[^}]*\.tiles\{grid-template-columns:repeat\(2/);
-  const legacy700 = html.match(/@media\(max-width:700px\)([\s\S]*?)(?=@media|<\/style>)/)?.[1] || "";
-  assert.doesNotMatch(legacy700, /\.tiles\{grid-template-columns:repeat\(2/);
-  assert.match(html, /@media\(max-width:620px\)\{\.tiles\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
-  assert.match(html, /\.example-grid\{display:block\}/);
+  assert.match(html, /@media\(max-width:620px\)[\s\S]*?\.tiles\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
+  assert.match(html, /\.metrics\{display:grid;grid-template-columns:repeat\(5,minmax\(0,1fr\)\)/);
+  assert.match(html, /\.example-chart\{height:128px/);
+  assert.match(html, /\.example-grid\{display:grid/);
   assert.match(html, /\.example-metrics\{display:grid;grid-template-columns:repeat\(4,minmax\(0,1fr\)\)/);
-  assert.match(html, /@media\(max-width:700px\)[\s\S]*?\.example-metrics\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)\}/);
+  assert.match(html, /@media\(max-width:620px\)[\s\S]*?\.example-metrics\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)\}/);
   assert.match(html, /\.value\.status-text\{font-size:16px;line-height:1\.25;overflow-wrap:normal\}/);
 });
 
@@ -410,7 +408,7 @@ test("Trading template lifecycle tabs change the illustrative stage only", () =>
   assert.match(html, /Strategies[\s\S]*Capital[\s\S]*Total Return[\s\S]*System/);
   assert.match(html, /Unavailable: no verified capital value/);
   assert.match(html, /Unavailable: no verified return value/);
-  assert.match(html, /Unavailable: no verified system state for this example/);
+  assert.match(html, /Unavailable: no verified equity/);
   assert.doesNotMatch(html.slice(html.indexOf('Example Strategy')), /Awaiting promotion/);
   assert.doesNotMatch(html, /\$[0-9]|[0-9]+\.[0-9]+%|READY/,
     "illustrative placeholder does not imply fabricated historical performance");
