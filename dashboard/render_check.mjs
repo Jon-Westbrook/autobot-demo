@@ -32,26 +32,28 @@ const checks = [
     && html.includes('["Total Return","—","Unavailable: no verified return value"]')
     && html.includes('count?"Status unavailable":"Awaiting promotion"')
     && html.includes('Go to Research →') && !/\$0|READY/.test(html)],
-  ['research presents only ordinary Annual return and concise recent rows', researchRenderer.includes('pct(c.annual_return)')
-    && researchRenderer.includes('Standard compounded annual growth')
-    && researchRenderer.includes('<th>Annual return</th>')
-    && researchRenderer.includes('experimentDate(r.experiment_id)')
-    && !researchRenderer.includes('score_label') && !researchRenderer.includes('pct(c.score)')
-    && !researchRenderer.includes('pct(r.score)') && !/EXCESS Annual return|Excess Annual return|Best Score/.test(researchRenderer)],
-  ['champion keeps risk context and audit identity secondary', researchRenderer.includes('<strong>Sharpe</strong>')
-    && researchRenderer.includes('<strong>Max Drawdown</strong>')
-    && researchRenderer.includes('Champion audit identity') && researchRenderer.includes('Candidate SHA-256')
-    && !researchRenderer.includes('candidate_identity') && !researchRenderer.includes('Legacy rows')],
-  ['historical charts use concise labels without objective-score language', html.includes('function chart(data){')
-    && html.includes('Verified historical equity')
-    && html.includes('The chart uses verified historical marks through the development cutoff.')
-    && !html.includes('Objective score is separate')
-    && researchRenderer.includes('${chart(data.chart||{})}')
-    && html.includes("data.replay?'Five-year historical replay':'Verified historical equity'")
+   ['research presents compact Annual return and objective-score comparisons without visible machine IDs', researchRenderer.includes('pct(c.annual_return)')
+     && researchRenderer.includes('Annualized growth')
+     && researchRenderer.includes('<th>Annual return</th>') && researchRenderer.includes('<th>Score</th>')
+     && researchRenderer.includes('experimentDate(r.experiment_id)')
+     && researchRenderer.includes('researchScore(r.score)') && researchRenderer.includes('title="Experiment ID: ${esc(r.experiment_id)}"')
+      && researchRenderer.includes('data.score_label') && !researchRenderer.includes('pct(c.score)')
+     && !researchRenderer.includes('pct(r.score)') && !/EXCESS Annual return|Best Score/.test(researchRenderer)],
+   ['champion keeps risk context and immutable audit identity behind one Details disclosure', researchRenderer.includes('<strong>Sharpe</strong>')
+     && researchRenderer.includes('<strong>Max Drawdown</strong>')
+     && researchRenderer.includes('<summary>Details</summary>') && researchRenderer.includes('Candidate SHA-256')
+     && researchRenderer.includes('Dataset manifest SHA-256')
+     && !researchRenderer.includes('candidate_identity') && !researchRenderer.includes('Legacy rows')],
+   ['historical chart is the champion visual with provenance hidden by default', html.includes('function chart(data){')
+     && html.includes('Verified historical champion equity')
+     && !html.includes('The chart uses verified historical marks through the development cutoff.')
+     && !html.includes('Objective score is separate')
+     && researchRenderer.includes('${chart(data.chart||{})}')
+     && html.includes("data.replay?'Five-year hypothetical replay':'Verified historical champion equity'")
     && html.includes('point.date<=cutoff')],
-  ['four summary tiles show standard Annual return', (researchRenderer.match(/class="tile"/g) || []).length === 4
-    && html.includes('research-heading') && researchRenderer.includes('pct(c.annual_return)')
-    && !researchRenderer.includes('pct(c.score)')],
+   ['four compact summary tiles and five champion metrics use existing API fields', (researchRenderer.match(/class="tile"/g) || []).length === 4
+     && html.includes('research-heading') && researchRenderer.includes('pct(c.annual_return)')
+     && researchRenderer.includes('researchScore(c.score)') && researchRenderer.includes('pct(c.max_drawdown)')],
   ['chart uses actual equity values with grid and value labels', html.includes('stroke="#22293a"')
     && html.includes('money(value)')
     && html.includes('equities=points.map(point=>equityNumber(point.equity))')
@@ -69,7 +71,7 @@ const checks = [
     && html.includes('else if(segment.length){segments.push(segment);segment=[]}')
     && html.includes('if(segment.length)segments.push(segment)')
     && html.includes('segments.filter(segment=>segment.length>1)')
-    && html.includes('missing mark${data.gap_count===1?\'\':\'s\'} shown as gaps; no data is invented or smoothed.')],
+     && html.includes('source marks are not interpolated or smoothed.')],
   ['five-year replay is a distinct cutoff-filtered historical chart', html.includes('function fiveYearReplay')
     && html.includes('point.date<=championCutoff') && html.includes('point.date<=cutoff')
     && html.includes('fiveYearReplay(data.chart,c.development_end)')

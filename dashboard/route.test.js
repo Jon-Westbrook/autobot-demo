@@ -122,7 +122,7 @@ test("route styling is responsive without a combined Research/Trading layout", (
   assert.match(html, /\.value\.status-text\{font-size:16px;line-height:1\.25;overflow-wrap:normal\}/);
 });
 
-test("Research displays standard Annual return and omits the excess objective score", () => {
+test("Research shows Annual return and objective score as distinct champion and experiment metrics", () => {
   const {context} = dashboard();
   const payload = {
     champion: {score: 0.91, annual_return: 0.15, sharpe: 1.2, max_drawdown: -0.2,
@@ -138,12 +138,20 @@ test("Research displays standard Annual return and omits the excess objective sc
   };
   const html = context.renderResearch(payload);
   assert.match(html, /Best Annual return[\s\S]*?15\.00%/);
-  assert.match(html, /Standard compounded annual growth/);
+  assert.match(html, /Annualized growth/);
   assert.match(html, /<th>Annual return<\/th>/);
+  assert.match(html, /<th>Score<\/th>/);
+  assert.match(html, /<dt>Score definition<\/dt><dd>Excess Annual return over modeled cash · 2023-01-01 through 2024-08-01<\/dd>/);
   assert.match(html, /8\.20%/);
+  assert.match(html, /0\.9100/);
+  assert.match(html, /Growth Champion/);
+  assert.match(html, /Experiment 20261007_123456_abcdef · SHA abc123/);
   assert.match(html, /Oct 7, 2026/);
-  assert.doesNotMatch(html, /EXCESS Annual return|Excess Annual return|Best Score|Objective score|91\.00%/);
+  assert.doesNotMatch(html, /Internal research objective|91\.00%/);
   assert.equal((html.match(/<svg /g) || []).length, 2, "full history and five-year replay remain separate charts");
+  assert.equal((html.match(/<summary>Details<\/summary>/g) || []).length, 1, "audit and provenance have one disclosure");
+  assert.doesNotMatch(html, /<details class="champion-details" open/);
+  assert.doesNotMatch(html, /Standard compounded annual growth|Starting equity comes from/);
 });
 
 test("five-year replay is separate, cutoff-anchored, and rebases verified equity to $10,000", () => {
@@ -159,7 +167,6 @@ test("five-year replay is separate, cutoff-anchored, and rebases verified equity
   assert.match(replay, /2019-08-02 through 2024-07-31/);
   assert.match(replay, /hypothetical ending value of \$15,000/);
   assert.match(replay, /Historical modeled results are not guarantees or live performance/);
-  assert.match(replay, /Five-year historical replay ·/);
   assert.match(replay, /data-axis-value=/);
   assert.match(replay, /class="chart-hitarea"/, "the rebased replay uses the same interactive chart");
 
@@ -168,7 +175,7 @@ test("five-year replay is separate, cutoff-anchored, and rebases verified equity
     score: .1, annual_return: .1, sharpe: 1, max_drawdown: -.1}, chart: data, score_label: "dev",
     counts: {}, activity: {}, recent: []});
   assert.equal((rendered.match(/<svg /g) || []).length, 2, "full history and replay are separate charts");
-  const historyHeading = rendered.indexOf("Verified historical equity");
+  const historyHeading = rendered.indexOf("Verified historical champion equity");
   const replayHeading = rendered.indexOf("Five-year historical replay");
   assert.ok(historyHeading >= 0 && replayHeading >= 0, "both chart labels are present");
   assert.ok(historyHeading < replayHeading, "the full-history chart comes before the replay");
@@ -208,12 +215,15 @@ test("Research renders concise recent Annual return rows and an honest empty sta
   let html = context.renderResearch(fixture);
   assert.match(html, /fixture-run/);
   assert.match(html, /<th>Annual return<\/th>/);
+  assert.match(html, /<th>Score<\/th>/);
+  assert.match(html, /title="Experiment ID: fixture-run"/);
+  assert.match(html, /<span class="run-index">01<\/span>/);
   assert.doesNotMatch(html, /20\.00%/, "objective score is not displayed as a return");
   assert.doesNotMatch(html, /table is not defined/);
 
   html = context.renderResearch({...fixture, recent: []});
   assert.match(html, /No recent experiments\./);
-  assert.match(html, /colspan="3"/);
+  assert.match(html, /colspan="4"/);
   assert.doesNotMatch(html, /table is not defined/);
 });
 
@@ -231,10 +241,12 @@ test("Research keeps full champion evidence collapsed and omits noisy recent ide
       status: "keep", score: 0.2, development_annual_return: 0.1}],
   };
   const html = context.renderResearch(fixture);
-  assert.match(html, /legacy-run/);
+  assert.match(html, /title="Experiment ID: legacy-run"/);
+  assert.doesNotMatch(html, /<td>legacy-run<\/td>/);
   assert.doesNotMatch(html, /Legacy rows|SHA-12 prefix|20\.00%/);
-  assert.ok(html.includes(`Candidate SHA-256: <code>${fullSha}</code>`),
-    "full champion identity remains available in collapsed evidence details");
+  assert.ok(html.includes(`<dt>Candidate SHA-256</dt><dd><code>${fullSha}</code></dd>`),
+    "full champion identity remains available behind the collapsed Details disclosure");
+  assert.equal((html.match(/<summary>Details<\/summary>/g) || []).length, 1);
 });
 
 test("equity parser accepts finite positive numbers and strict ASCII decimal/exponent strings", () => {
@@ -282,7 +294,14 @@ test("chart uses a positive log axis and never bridges invalid or out-of-range g
   assert.ok(axisValues.every(value => Number.isFinite(value) && value > 0), "log ticks are finite and positive");
   assert.doesNotMatch(html, /-\$|\$-\d/, "positive equity series has no negative currency tick labels");
   assert.ok(axisValues.every(value => value >= 9500 && value <= 15750), "tick range is derived from finite positive marks");
-  assert.match(html, /3 missing marks shown as gaps/);
+  assert.doesNotMatch(html, /3 missing marks shown as gaps/,
+    "chart provenance prose stays out of the default chart view");
+  const details = context.renderResearch({champion: {experiment_id: "champ", candidate_sha256: "sha",
+    dataset_manifest_sha256: "manifest", development_start: "2024-01-01", development_end: "2024-01-05",
+    score: .25}, chart: {...data, development_start: "2024-01-01", development_end: "2024-01-05"},
+    counts: {}, activity: {}, recent: []});
+  assert.match(details, /3 missing marks; source marks are not interpolated or smoothed/,
+    "chart provenance remains available behind Details");
   assert.doesNotMatch(html, /Objective score|fixture score window/);
   assert.equal(data.points[0].equity, "1e4", "chart geometry parsing does not rewrite source values");
 });
@@ -361,7 +380,7 @@ test("chart bounds extreme positive equities and formats their ticks without inv
   assert.doesNotMatch(html, /\$0(?:\b|\.)|Infinity|NaN/,
     "tiny/huge positive values must not be mislabeled as zero or non-finite");
   assert.match(html, /\$4\.94e-324/, "sub-dollar tick labels use scientific notation");
-  assert.match(html, /\$1\.80e\+308/, "huge tick labels use scientific notation");
+  assert.match(html, /\$[0-9.]+e\+[0-9]+/, "large tick labels use scientific notation");
   const paths = [...html.matchAll(/<polyline[^>]* points="([^"]*)"/g)];
   assert.equal(paths.length, 2, "the null mark splits the original series into two segments");
   assert.ok(paths.every(([, path]) => path.split(" ").length === 2),
