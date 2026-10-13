@@ -68,7 +68,7 @@ function requireAuth(req, res, next) {
 
 
 function runDashboardJson(view) {
-  const option = view === "trading" ? "--dashboard-trading" : "--dashboard-research";
+  const option = view === "trading" ? "--dashboard-trading" : view === "replay" ? "--dashboard-replay" : "--dashboard-research";
   const result = spawnSync("python3", [STATUS_SCRIPT, option], {
     encoding: "utf8",
     timeout: 30000,
@@ -119,6 +119,14 @@ app.get(routePath("/api/dashboard/research"), requireAuth, (req, res) => {
 app.get(routePath("/api/dashboard/trading"), requireAuth, (req, res) => {
   try {
     res.json(runDashboardJson("trading"));
+  } catch (error) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.get(routePath("/api/dashboard/replay"), requireAuth, (req, res) => {
+  try {
+    res.json(runDashboardJson("replay"));
   } catch (error) {
     res.status(500).json({ error: error.message });
   }

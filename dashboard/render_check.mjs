@@ -1,92 +1,42 @@
-/** Static UX/API guardrails for the two-route dashboard. Run with node dashboard/render_check.mjs. */
+/** Static UX/API guardrails for Research and Trading. Run with node dashboard/render_check.mjs. */
 import { readFileSync } from 'node:fs';
 import { dirname, join } from 'node:path';
 import { fileURLToPath } from 'node:url';
-
-const here = dirname(fileURLToPath(import.meta.url));
-const html = readFileSync(join(here, 'index.html'), 'utf8');
-const server = readFileSync(join(here, 'server.js'), 'utf8');
-const researchRenderers = [...html.matchAll(/function renderResearch\(data\)\{([\s\S]*?)\n\s*\}/g)];
-const researchRenderer = researchRenderers[0]?.[1] ?? '';
-const checks = [
-  ['exactly one authoritative Research renderer', [...html.matchAll(/function renderResearch\(/g)].length === 1],
-  ['shared brand header', /class="topbar"[\s\S]*?AUTOBOT[\s\S]*?class="nav"/.test(html)],
-  ['Research and Trading text navigation', /data-route="research">Research/.test(html)
-    && /data-route="trading">Trading/.test(html)],
-  ['direct route/history support', html.includes("history.pushState") && html.includes("popstate")
-    && server.includes('"/research"') && server.includes('"/trading"')],
-  ['separate authenticated data endpoints', server.includes('/api/dashboard/research')
-    && server.includes('/api/dashboard/trading') && server.includes('requireAuth')],
-  ['no lifecycle-wide tabs or promotion panel', !/id="lifecycle"|renderLifecycle|promotion panel|final_holdout/i.test(html)],
-  ['Trading has an honest empty state, research CTA and non-operational template', html.includes('No Active Strategies')
-    && html.includes('Go to Research →') && html.includes('function renderTrading')
-     && html.includes('<h2>Example Strategy Component</h2>') && html.includes('TEMPLATE')
-     && html.includes('Illustrative component only') && html.includes('Verified historical series unavailable')
-     && html.includes('Unavailable: no verified return series') && html.includes('Unavailable: no verified capital value')
-    && html.includes('Unavailable: no verified return value') && html.includes('Awaiting promotion')
-    && html.includes('No verified ${esc(stage)} data is available')
-    && !html.includes('renderDashboard') && !html.includes('dashboard-grid')],
-  ['Trading tiles use verified lane count and clearly unavailable financial values',
-    html.includes('["Strategies",String(count)')
-    && html.includes('["Capital","—","Unavailable: no verified capital value"]')
-    && html.includes('["Total Return","—","Unavailable: no verified return value"]')
-    && html.includes('count?"Status unavailable":"Awaiting promotion"')
-    && html.includes('Go to Research →') && !/\$0|READY/.test(html)],
-   ['research presents compact Annual return and objective-score comparisons without visible machine IDs', researchRenderer.includes('pct(c.annual_return)')
-     && researchRenderer.includes('Annualized growth')
-     && researchRenderer.includes('<th>Annual return</th>') && researchRenderer.includes('<th>Score</th>')
-     && researchRenderer.includes('experimentDate(r.experiment_id)')
-     && researchRenderer.includes('researchScore(r.score)') && researchRenderer.includes('title="Experiment ID: ${esc(r.experiment_id)}"')
-      && researchRenderer.includes('data.score_label') && !researchRenderer.includes('pct(c.score)')
-     && !researchRenderer.includes('pct(r.score)') && !/EXCESS Annual return|Best Score/.test(researchRenderer)],
-   ['champion keeps risk context and immutable audit identity behind one Details disclosure', researchRenderer.includes('<strong>Sharpe</strong>')
-     && researchRenderer.includes('<strong>Max Drawdown</strong>')
-     && researchRenderer.includes('<summary>Details</summary>') && researchRenderer.includes('Candidate SHA-256')
-     && researchRenderer.includes('Dataset manifest SHA-256')
-     && !researchRenderer.includes('candidate_identity') && !researchRenderer.includes('Legacy rows')],
-   ['historical chart is the champion visual with provenance hidden by default', html.includes('function chart(data){')
-     && html.includes('Verified historical champion equity')
-     && !html.includes('The chart uses verified historical marks through the development cutoff.')
-     && !html.includes('Objective score is separate')
-     && researchRenderer.includes('${chart(data.chart||{})}')
-     && html.includes("data.replay?'Five-year hypothetical replay':'Verified historical champion equity'")
-    && html.includes('point.date<=cutoff')],
-   ['four compact summary tiles and five champion metrics use existing API fields', (researchRenderer.match(/class="tile"/g) || []).length === 4
-     && html.includes('research-heading') && researchRenderer.includes('pct(c.annual_return)')
-     && researchRenderer.includes('researchScore(c.score)') && researchRenderer.includes('pct(c.max_drawdown)')],
-  ['chart uses actual equity values with grid and value labels', html.includes('stroke="#22293a"')
-    && html.includes('money(value)')
-    && html.includes('equities=points.map(point=>equityNumber(point.equity))')
-    && html.includes('const marks=equities.filter(value=>value!==null)')
-    && html.includes('y(equities[i])')],
-  ['chart x-axis endpoints use the first and last actual point dates', html.includes('${esc(points[0].date)}')
-    && html.includes('${esc(points[points.length-1].date)}')],
-  ['chart parses numeric and strict ASCII decimal/exponent-string marks safely', html.includes('const equityNumber=value=>')
-    && html.includes('Number.isFinite(number)&&number>0')
-    && html.includes('[0-9]+(?:\\.[0-9]*)?|\\.[0-9]+')
-    && html.includes('(?![\\s\\S])')
-    && html.includes('(?:[eE][+-]?[0-9]+)?')
-    && html.includes('Math.min(...marks)') && html.includes('y(equities[i])')],
-  ['chart preserves missing-mark gaps without interpolation or smoothing', html.includes('valid=equities.map(value=>value!==null)')
-    && html.includes('else if(segment.length){segments.push(segment);segment=[]}')
-    && html.includes('if(segment.length)segments.push(segment)')
-    && html.includes('segments.filter(segment=>segment.length>1)')
-     && html.includes('source marks are not interpolated or smoothed.')],
-  ['five-year replay is a distinct cutoff-filtered historical chart', html.includes('function fiveYearReplay')
-    && html.includes('point.date<=championCutoff') && html.includes('point.date<=cutoff')
-    && html.includes('fiveYearReplay(data.chart,c.development_end)')
-    && html.includes('Historical modeled results are not guarantees or live performance')
-     && html.includes('@media(max-width:620px){#app')
-     && html.includes('.tiles{grid-template-columns:repeat(2,minmax(0,1fr))')
-    && html.includes('.example-grid{display:grid')],
-   ['template metrics remain placeholders, with no fabricated performance', html.includes('no data plotted')
-     && html.includes('Unavailable: no verified return series')
-     && html.includes('Unavailable: no verified risk metric')
-     && html.includes('Unavailable: no verified drawdown')
-      && html.includes('Unavailable: no verified equity')
-     && html.includes('No strategy, order activity, or performance claims')
-    && !/dashboard-grid|dashboard-panel|renderDashboard/.test(html)],
+const here=dirname(fileURLToPath(import.meta.url));
+const html=readFileSync(join(here,'index.html'),'utf8');
+const server=readFileSync(join(here,'server.js'),'utf8');
+const status=readFileSync(join(here,'../status.py'),'utf8');
+const research=[...html.matchAll(/function renderResearch\(data\)\{([\s\S]*?)\n\}/g)][0]?.[1]??'';
+const replay=[...html.matchAll(/function replayCard\([\s\S]*?\n\}/g)][0]?.[0]??'';
+const trading=[...html.matchAll(/function renderTemplate\([\s\S]*?\n\}/g)][0]?.[0]??'';
+const checks=[
+ ['one authoritative Research renderer', [...html.matchAll(/function renderResearch\(/g)].length===1],
+ ['shared brand header and text route navigation', /class="topbar"[\s\S]*?AUTOBOT[\s\S]*?class="nav"/.test(html)&&/data-route="research">Research/.test(html)&&/data-route="trading">Trading/.test(html)],
+ ['direct route/history support', html.includes('history.pushState')&&html.includes('popstate')&&server.includes('"/research"')&&server.includes('"/trading"')],
+ ['separate authenticated Research, Trading and replay APIs', ['/api/dashboard/research','/api/dashboard/trading','/api/dashboard/replay'].every(x=>server.includes(x))&&server.includes('requireAuth')],
+ ['identity card has no chart or performance metrics', !research.includes('${chart(data.chart||{})}')&&!research.includes('pct(c.annual_return)')&&!research.includes('c.sharpe')&&!research.includes('c.max_drawdown')&&!research.includes('c.ending_equity')&&!research.includes('researchScore(c.score)')&& !research.includes('Manifest SHA-256')&&!research.includes('Curve integrity')],
+ ['candidate ID and SHA are in collapsed identity Details', research.includes('<summary>Champion identity</summary>')&&research.includes('Candidate SHA-256')&&research.includes('Experiment')],
+ ['development/search replay is full-history scoped; objective score retains its narrow window', research.includes("replayCard(replay,'development','Development Replay','Full development/search replay',true)")&&replay.includes('Objective score window')&&replay.includes('scoreWindow')&&replay.includes('Development Score')],
+ ['development, five-year, ten-year and full-history cards are independent', ['development','five_year','ten_year','through_present'].every(k=>research.includes(`replayCard(replay,'${k}'`))],
+ ['legacy frontend rebasing helper is removed and replay charts use canonical series directly', !html.includes('function fiveYearReplay')&&!html.includes('10000*(point.equity/base)')&&replay.includes('points:period.points||[]')],
+ ['development score confined to development card with exact score interval Details', replay.includes('if(score)metricItems.push(["Development Score"')&&replay.includes('Objective score window')&&replay.includes('scoreWindow')],
+ ['in-sample development is not mislabeled post-selection', replay.includes('IN-SAMPLE / SEARCH INTERVAL')&&replay.includes('POST-SELECTION · DESCRIPTIVE ONLY')&&replay.includes('2024-08-01')],
+ ['replay declares canonical Sharpe interval, gaps, sample deviation and annualization', replay.includes('simple equity returns between consecutive priced ledger marks')&&replay.includes('missing marks are omitted')&&replay.includes('Sample standard deviation')&&replay.includes('sqrt(252)')&&replay.includes('No separate risk-free subtraction')],
+ ['period endpoint metrics sourced and validated server-side', status.includes('total_return')&&status.includes('net_profit')&&status.includes('expected_annual_return')],
+ ['no $10k window rebasing; original seed distinct from window anchor', replay.includes('Window start equity / return anchor')&&replay.includes('Original full-history run seed')&&replay.includes('Windows are not rescaled')],
+ ['holdout points are not read through a development cutoff', html.includes('point.date<=cutoff')],
+ ['chart uses actual positive equity marks and a safe numeric parser', html.includes('equities=points.map(point=>equityNumber(point.equity))')&&html.includes('const marks=equities.filter(value=>value!==null)')&&html.includes('Number.isFinite(number)&&number>0')&&html.includes('(?![\\s\\S])')],
+ ['chart preserves missing-mark gaps without interpolation/smoothing', html.includes('valid=equities.map(value=>value!==null)')&&html.includes('segments.filter(segment=>segment.length>1)')&&html.includes('gaps at missing marks')],
+ ['chart x-axis uses actual endpoint dates and values', html.includes('${esc(points[0].date)}')&&html.includes('${esc(points[points.length-1].date)}')&&html.includes('money(value)')],
+ ['chart pointer and keyboard inspection stay available', html.includes('onpointermove="chartPointer(event,this)"')&&html.includes('onkeydown="chartKey(event,this)"')],
+ ['Trading preview explicitly says not promoted and no capital at risk', trading.includes('PREVIEW — NOT PROMOTED')&&trading.includes('NO CAPITAL AT RISK')&&trading.includes('no orders or promotion')],
+ ['historical stage requires exact candidate and contract identity', trading.includes('replay.candidate?.sha256===champion.candidate_sha256')&&trading.includes('replay.contract?.version===champion.contract_version')&&trading.includes('replay.contract?.sha256===champion.contract_sha256')],
+ ['unsupported stages disabled and no operational forms/actions', trading.includes('disabled title=')&&trading.includes('Unavailable: no verified stage evidence')&&!/<form|type="submit"|api\/(?:orders|promote)/i.test(html)],
+ ['no implied zero capital, readiness, or fabricated placeholder chart', !/\$0|READY|example-chart|example-metrics/.test(html)],
+ ['responsive tile and metrics layouts preserved', html.includes('@media(max-width:620px)')&&html.includes('.tiles{grid-template-columns:repeat(2,minmax(0,1fr))')&&html.includes('.metrics{display:grid;grid-template-columns:repeat(5,minmax(0,1fr))')],
+ ['replay artifact reader fails closed on identity/pin mismatch', status.includes('DASHBOARD_REPLAY_PATH')&&status.includes('MANIFEST_SHA256_PIN')&&status.includes('candidate_sha256')&&status.includes('return unavailable')],
+ ['tracked replay producer invokes canonical accounting and confines output', readFileSync(join(here,'build_research_replay.py'),'utf8').includes('canonical_replay.performance')&&readFileSync(join(here,'build_research_replay.py'),'utf8').includes('/srv/data/autobot-dashboard-replay/')&&!readFileSync(join(here,'build_research_replay.py'),'utf8').includes('results.tsv')],
 ];
-const failed = checks.filter(([, ok]) => !ok);
-for (const [name, ok] of checks) console.log(`${ok ? 'PASS' : 'FAIL'} ${name}`);
-if (failed.length) process.exit(1);
+const failed=checks.filter(([,ok])=>!ok);
+for(const [name,ok] of checks)console.log(`${ok?'PASS':'FAIL'} ${name}`);
+if(failed.length)process.exit(1);

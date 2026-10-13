@@ -77,3 +77,27 @@ test("root and configured-base routes share the same correct shell", async t => 
     assert.match(html, /const BASE=\"\/autobot\"/);
   }
 });
+
+
+test("descriptive replay endpoint remains authenticated and serves only verified evidence", async t => {
+  const directory = mkdtempSync(join(tmpdir(), "autobot-dashboard-replay-"));
+  const authFile = join(directory, "auth.json");
+  writeFileSync(authFile, JSON.stringify({code: "secret"}));
+  const {child, origin} = await startDashboard({AUTH_FILE: authFile, BASE_PATH: ""});
+  t.after(async () => { await stopDashboard(child); rmSync(directory, {recursive: true, force: true}); });
+
+  const denied = await fetch(origin + "/api/dashboard/replay");
+  assert.equal(denied.status, 401);
+  const login = await fetch(origin + "/api/auth", {method: "POST",
+    headers: {"content-type": "application/json"}, body: JSON.stringify({code: "secret"})});
+  const {token} = await login.json();
+  const response = await fetch(origin + "/api/dashboard/replay", {
+    headers: {authorization: `Bearer ${token}`},
+  });
+  assert.equal(response.status, 200);
+  const payload = await response.json();
+  assert.equal(payload.historical_replay.availability, "available");
+  assert.equal(payload.historical_replay.label,
+    "POST-SELECTION / THROUGH-PRESENT (latest immutable dataset session)");
+  assert.equal(payload.historical_replay.dataset.latest, "2026-09-25");
+});
