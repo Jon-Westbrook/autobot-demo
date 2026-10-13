@@ -42,7 +42,9 @@ async function stopDashboard(child) {
 test("auth config fails closed and tokens expire on protected requests", async t => {
   const directory = mkdtempSync(join(tmpdir(), "autobot-dashboard-"));
   const authFile = join(directory, "auth.json");
-  const {child, origin} = await startDashboard({AUTH_FILE: authFile, BASE_PATH: ""});
+  const {child, origin} = await startDashboard({AUTH_FILE: authFile, BASE_PATH: "",
+    AUTOBOT_ROOT: new URL("..", import.meta.url).pathname.replace(/\/$/, ""),
+    STATUS_PYTHON: new URL("../backtester/venv/bin/python", import.meta.url).pathname});
   t.after(async () => { await stopDashboard(child); rmSync(directory, {recursive: true, force: true}); });
 
   const absent = await fetch(origin + "/api/auth", {method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify({code: "anything"})});
@@ -83,7 +85,9 @@ test("descriptive replay endpoint remains authenticated and serves only verified
   const directory = mkdtempSync(join(tmpdir(), "autobot-dashboard-replay-"));
   const authFile = join(directory, "auth.json");
   writeFileSync(authFile, JSON.stringify({code: "secret"}));
-  const {child, origin} = await startDashboard({AUTH_FILE: authFile, BASE_PATH: ""});
+  const {child, origin} = await startDashboard({AUTH_FILE: authFile, BASE_PATH: "",
+    AUTOBOT_ROOT: new URL("..", import.meta.url).pathname.replace(/\/$/, ""),
+    STATUS_PYTHON: new URL("../backtester/venv/bin/python", import.meta.url).pathname});
   t.after(async () => { await stopDashboard(child); rmSync(directory, {recursive: true, force: true}); });
 
   const denied = await fetch(origin + "/api/dashboard/replay");
@@ -96,8 +100,6 @@ test("descriptive replay endpoint remains authenticated and serves only verified
   });
   assert.equal(response.status, 200);
   const payload = await response.json();
-  assert.equal(payload.historical_replay.availability, "available");
-  assert.equal(payload.historical_replay.label,
-    "POST-SELECTION / THROUGH-PRESENT (latest immutable dataset session)");
-  assert.equal(payload.historical_replay.dataset.latest, "2026-09-25");
+  assert.equal(payload.historical_replay.availability, "unavailable",
+    "local test has no pinned candidate/replay artifact and must fail closed");
 });

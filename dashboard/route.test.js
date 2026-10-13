@@ -67,14 +67,7 @@ test("Research and Trading are separate authenticated routes with independent re
   assert.equal(nav[0].classList.active, false);
   assert.equal(nav[1].classList.active, true);
   assert.match(tradingHtml, /Strategy Component/);
-  assert.equal((tradingHtml.match(/class="tile"/g) || []).length, 4, "Trading displays four status tiles");
-  assert.match(tradingHtml, /Strategies[\s\S]*>0</);
-  assert.match(tradingHtml, /Capital[\s\S]*>—</);
-  assert.match(tradingHtml, /Unavailable: no verified capital value/);
-  assert.match(tradingHtml, /Total Return[\s\S]*>—</);
-  assert.match(tradingHtml, /Unavailable: no verified return value/);
-  assert.match(tradingHtml, /System[\s\S]*>Awaiting promotion</);
-  assert.match(tradingHtml, /No canonical promoted lanes/);
+  assert.equal((tradingHtml.match(/class="tile"/g) || []).length, 0, "Trading omits low-value global status tiles");
   assert.doesNotMatch(tradingHtml, /READY|\$0|0\.00%/);
   assert.match(tradingHtml, /Historical[\s\S]*Modeled[\s\S]*Paper[\s\S]*Trivial Capital[\s\S]*Live/);
   assert.match(tradingHtml, /disabled title='Unavailable: no verified stage evidence'/);
@@ -112,9 +105,9 @@ for (const failedRoute of ["research", "trading"]) {
 test("route styling is responsive without a combined Research/Trading layout", () => {
   const html = readFileSync(new URL("./index.html", import.meta.url), "utf8");
   assert.doesNotMatch(html, /dashboard-grid|dashboard-panel|renderDashboard/);
-  assert.match(html, /\.tiles\{display:grid;grid-template-columns:repeat\(4,minmax\(0,1fr\)\)/);
+  assert.match(html, /\.tiles\{display:grid;grid-template-columns:repeat\(3,minmax\(0,1fr\)\)/);
   assert.match(html, /@media\(max-width:620px\)[\s\S]*?\.tiles\{grid-template-columns:repeat\(2,minmax\(0,1fr\)\)/);
-  assert.match(html, /\.metrics\{display:grid;grid-template-columns:repeat\(5,minmax\(0,1fr\)\)/);
+  assert.match(html, /\.metrics\{display:grid;grid-template-columns:repeat\(6,minmax\(0,1fr\)\)/);
   assert.match(html, /\.template-inner\{margin-top:13px/);
   assert.doesNotMatch(html, /\.example-chart|\.example-metrics/);
 });
@@ -129,8 +122,8 @@ test("Research separates process tiles, champion identity and development score 
     recent: [{experiment_id: "run-7", score: 0.91, development_annual_return: 0.082}]};
   const html = context.renderResearch(payload);
   assert.match(html, /Process/);
-  assert.match(html, /Completed Attempts/);
-  assert.match(html, /Scored Attempts/);
+  assert.match(html, /Experiments/);
+  assert.match(html, /Scored/);
   assert.match(html, /Current Champion/);
   assert.match(html, /Candidate SHA-256/);
   const identityCard = html.slice(html.indexOf('<article class="card champion-card"'), html.indexOf('<article class="card replay-card"'));
@@ -158,14 +151,17 @@ test("independent replay cards render only their own canonical period and Detail
       points: [{date: "2021-09-27", equity: 10000}, {date: "2026-09-25", equity: 15000}]}}};
   const card = context.replayCard(replay, "five_year", "Five-year Replay", "Five years", false);
   assert.match(card, /POST-SELECTION/);
-  assert.match(card, /2021-09-24 through 2026-09-25/);
+  assert.match(card, /2021-09-24 → 2026-09-25/);
   assert.match(card, /\$15,000/);
   assert.match(card, /Candidate SHA-256|a{64}/);
-  assert.match(card, /Canonical simple equity returns[\s\S]*Sample standard deviation/);
+  assert.match(card, /fresh ledger from 2021-09-24/);
+  assert.match(card, /LINEAR/);
+  assert.match(card, /LOG/);
+  assert.match(card, /sample deviation/);
   assert.equal((card.match(/<details class="replay-details"/g)||[]).length, 1);
   assert.equal((card.match(/<article class="card replay-card/g)||[]).length,1,"Details never nests another replay card");
   assert.match(context.replayCard(replay,"development","Development Replay","Dev",true),/Development Score/);
-  assert.match(context.replayCard(replay,"development","Development Replay","Dev",true),/2023-01-01 through 2024-08-01/);
+  assert.match(context.replayCard(replay,"development","Development Replay","Dev",true),/2023-01-01 → 2024-08-01/);
   assert.match(context.renderTrading({lanes:[],champion:{experiment_id:"frozen-id",candidate_sha256:"a".repeat(64),contract_version:"1.2.2",contract_sha256:"b".repeat(64)},historical_replay:{availability:"available",candidate:{experiment_id:"frozen-id",sha256:"a".repeat(64)},contract:{version:"1.2.2",sha256:"b".repeat(64)},periods:{through_present:replay.periods.five_year},development_objective:replay.development_objective,dataset:replay.dataset,configuration:replay.configuration}}),/PREVIEW — NOT PROMOTED[\s\S]*NO CAPITAL AT RISK[\s\S]*no orders or promotion/);
   assert.doesNotMatch(context.replayCard(replay,"five_year","Five-year Replay","5y",false),/Development Score/);
 });
@@ -257,7 +253,7 @@ test("chart uses a positive log axis and never bridges invalid or out-of-range g
   assert.equal(paths.length, 1, "post-cutoff marks are excluded before geometry is built");
   assert.equal(paths[0][1].split(" ").length, 2);
   assert.doesNotMatch(html, /NaN|undefined/);
-  assert.match(html, /Equity \(USD · log scale\)/, "axis interpretation is explicit");
+  assert.match(html, /Equity \(USD · log\)/, "axis interpretation is explicit");
   assert.match(html, /logarithmic scale/, "chart accessibility description names its scale");
   const axisValues = [...html.matchAll(/data-axis-value="([^"]+)"/g)].map(match => Number(match[1]));
   assert.equal(axisValues.length, 5, "the restrained axis renders five ticks");

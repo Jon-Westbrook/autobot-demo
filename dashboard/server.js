@@ -21,6 +21,7 @@ const BASE_PATH = (() => {
 })();
 const AUTH_FILE = process.env.AUTH_FILE || "/srv/data/todo-auth.json";
 const AUTOBOT_ROOT = process.env.AUTOBOT_ROOT || "/srv/autobot";
+const STATUS_PYTHON = process.env.STATUS_PYTHON || "python3";
 const STATUS_SCRIPT = `${AUTOBOT_ROOT}/status.py`;
 const PYTHON_MAX_BUFFER = 16 * 1024 * 1024;
 
@@ -69,7 +70,7 @@ function requireAuth(req, res, next) {
 
 function runDashboardJson(view) {
   const option = view === "trading" ? "--dashboard-trading" : view === "replay" ? "--dashboard-replay" : "--dashboard-research";
-  const result = spawnSync("python3", [STATUS_SCRIPT, option], {
+  const result = spawnSync(STATUS_PYTHON, [STATUS_SCRIPT, option], {
     encoding: "utf8",
     timeout: 30000,
     maxBuffer: PYTHON_MAX_BUFFER,
