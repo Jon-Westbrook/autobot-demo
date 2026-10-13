@@ -103,7 +103,7 @@ function replayCard(replay,key,title,subheading,showScore=false){
 }
 function renderLaneStage(stage,data){
  const replay=data?.historical_replay;
- if(stage==="historical")return `<div class="objective">PREVIEW — NOT PROMOTED · NO CAPITAL AT RISK. Historical replay only; no orders or promotion action.</div>`+replayCard(replay,"through_present","Historical Replay","Canonical replay through latest immutable data",false);
+ if(stage==="historical")return replayCard(replay,"through_present","Historical Replay","",false);
  const labels={modeled:"Modeled",paper:"Paper",trivial_capital:"Trivial Capital",live:"Live"};
  return `<div class="lane-content" role="tabpanel"><strong>${esc(labels[stage]||stage)} unavailable.</strong> No verified matching canonical candidate/contract record exists. This tab is disabled; no capital, order, or promotion action is available.</div>`
 }
