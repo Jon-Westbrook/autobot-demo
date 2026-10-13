@@ -34,7 +34,7 @@ const checks=[
  ['unsupported stages disabled and no operational forms/actions', trading.includes('disabled title=')&&trading.includes('Unavailable: no verified stage evidence')&&!/<form|type="submit"|api\/(?:orders|promote)/i.test(html)],
  ['no implied zero capital, readiness, or fabricated placeholder chart', !/\$0|READY|example-chart|example-metrics/.test(html)],
  ['responsive tile and six-metric layouts preserved', html.includes('@media(max-width:620px)')&&html.includes('.tiles{grid-template-columns:repeat(2,minmax(0,1fr))')&&html.includes('.metrics{display:grid;grid-template-columns:repeat(6,minmax(0,1fr))')],
- ['mobile chart axis labels stay within the viewport', html.includes('.chart .chart-axis-label{transform:translateX(9px) scaleX(1.3)}')],
+ ['mobile chart labels preserve readable scale within the responsive plot margins', html.includes('left=narrow?172:78,right=narrow?172:18')&&html.includes('.chart .chart-axis-label,.chart .chart-title-label,.chart .chart-date-end{transform:scaleX(2.4);transform-origin:right center}')],
  ['replay artifact reader fails closed on identity/pin mismatch', status.includes('DASHBOARD_REPLAY_PATH')&&status.includes('MANIFEST_SHA256_PIN')&&status.includes('candidate_sha256')&&status.includes('return unavailable')],
  ['tracked replay producer invokes canonical accounting and confines output', readFileSync(join(here,'build_research_replay.py'),'utf8').includes('canonical_replay.performance')&&readFileSync(join(here,'build_research_replay.py'),'utf8').includes('/srv/data/autobot-dashboard-replay/')&&!readFileSync(join(here,'build_research_replay.py'),'utf8').includes('results.tsv')],
 ];
