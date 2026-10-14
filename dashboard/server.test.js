@@ -1,6 +1,6 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createServer } from "node:net";
@@ -18,7 +18,8 @@ async function freePort() {
 async function startDashboard(env) {
   const port = await freePort();
   const child = spawn(process.execPath, [new URL("./server.js", import.meta.url).pathname], {
-    env: {...process.env, PORT: String(port), HOST: "127.0.0.1", ...env},
+    env: {...process.env, PORT: String(port), HOST: "127.0.0.1",
+      REPLAY_REFRESH_ENABLED: "false", ...env},
     stdio: "ignore",
   });
   const origin = `http://127.0.0.1:${port}`;
@@ -102,4 +103,39 @@ test("descriptive replay endpoint remains authenticated and serves only verified
   const payload = await response.json();
   assert.equal(payload.historical_replay.availability, "unavailable",
     "local test has no pinned candidate/replay artifact and must fail closed");
+});
+
+test("dashboard automatically rebuilds canonical replay when champion identity advances", async t => {
+  const directory = mkdtempSync(join(tmpdir(), "autobot-replay-refresh-"));
+  const authFile = join(directory, "auth.json");
+  const statusScript = join(directory, "status.py");
+  const builderScript = join(directory, "builder.py");
+  const marker = join(directory, "builder-runs.txt");
+  writeFileSync(authFile, JSON.stringify({code: "secret"}));
+  writeFileSync(statusScript, [
+    "import json",
+    "print(json.dumps({'champion': {'experiment_id': 'latest', 'candidate_sha256': 'new-sha'},",
+    "'historical_replay': {'availability': 'available',",
+    "'candidate': {'experiment_id': 'older', 'sha256': 'old-sha'}}}))",
+  ].join("\n"));
+  writeFileSync(builderScript, [
+    "import os",
+    "from pathlib import Path",
+    "p = Path(os.environ['REPLAY_TEST_MARKER'])",
+    "p.write_text(p.read_text() + 'ran\\n' if p.exists() else 'ran\\n')",
+  ].join("\n"));
+  const python = new URL("../backtester/venv/bin/python", import.meta.url).pathname;
+  const {child} = await startDashboard({AUTH_FILE: authFile, BASE_PATH: "",
+    AUTOBOT_ROOT: directory, STATUS_PYTHON: python, STATUS_SCRIPT: statusScript,
+    REPLAY_REFRESH_ENABLED: "true", REPLAY_REFRESH_PYTHON: python,
+    REPLAY_REFRESH_SCRIPT: builderScript, REPLAY_TEST_MARKER: marker,
+    REPLAY_REFRESH_RETRY_MS: "60000"});
+  t.after(async () => { await stopDashboard(child); rmSync(directory, {recursive: true, force: true}); });
+
+  for (let attempt = 0; attempt < 100 && !existsSync(marker); attempt++) await delay(25);
+  assert.equal(readFileSync(marker, "utf8"), "ran\n",
+    "stale replay identity starts one background canonical rebuild");
+  await delay(100);
+  assert.equal(readFileSync(marker, "utf8"), "ran\n",
+    "only one rebuild is started during the retry cooldown");
 });

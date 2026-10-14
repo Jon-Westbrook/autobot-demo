@@ -318,6 +318,8 @@ test("Research keeps full champion evidence collapsed and omits noisy recent ide
   assert.ok(html.includes(`<dt>Candidate SHA-256</dt><dd><code>${fullSha}</code></dd>`),
     "full champion identity remains available behind the collapsed Details disclosure");
   assert.equal((html.match(/<summary>Champion identity<\/summary>/g) || []).length, 1);
+  assert.match(html, /Candidate champion-run/,
+    "the current candidate is visible without expanding identity details");
 });
 
 test("equity parser accepts finite positive numbers and strict ASCII decimal/exponent strings", () => {

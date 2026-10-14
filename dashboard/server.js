@@ -3,7 +3,7 @@ import { randomUUID } from "crypto";
 import { existsSync, readFileSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
-import { spawnSync } from "child_process";
+import { spawn, spawnSync } from "child_process";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -22,10 +22,22 @@ const BASE_PATH = (() => {
 const AUTH_FILE = process.env.AUTH_FILE || "/srv/data/todo-auth.json";
 const AUTOBOT_ROOT = process.env.AUTOBOT_ROOT || "/srv/autobot";
 const STATUS_PYTHON = process.env.STATUS_PYTHON || "python3";
-const STATUS_SCRIPT = `${AUTOBOT_ROOT}/status.py`;
+const STATUS_SCRIPT = process.env.STATUS_SCRIPT || `${AUTOBOT_ROOT}/status.py`;
 const PYTHON_MAX_BUFFER = 16 * 1024 * 1024;
+const REPLAY_REFRESH_ENABLED = process.env.REPLAY_REFRESH_ENABLED !== "false";
+const REPLAY_REFRESH_PYTHON = process.env.REPLAY_REFRESH_PYTHON
+  || (existsSync(`${AUTOBOT_ROOT}/backtester/venv/bin/python`)
+    ? `${AUTOBOT_ROOT}/backtester/venv/bin/python` : STATUS_PYTHON);
+const REPLAY_REFRESH_SCRIPT = process.env.REPLAY_REFRESH_SCRIPT
+  || `${AUTOBOT_ROOT}/dashboard/build_research_replay.py`;
+const REPLAY_REFRESH_INTERVAL_MS = Math.max(10000, Number(process.env.REPLAY_REFRESH_INTERVAL_MS) || 60000);
+const REPLAY_REFRESH_RETRY_MS = Math.max(REPLAY_REFRESH_INTERVAL_MS,
+  Number(process.env.REPLAY_REFRESH_RETRY_MS) || 120000);
 
 const validTokens = new Map();
+let replayRefreshCheckRunning = false;
+let replayRefreshRunning = false;
+let lastReplayRefreshAttempt = 0;
 
 function routePath(path) {
   return BASE_PATH + path;
@@ -80,6 +92,81 @@ function runDashboardJson(view) {
     throw new Error((result.stderr || result.stdout || `status.py exited ${result.status}`).trim());
   }
   return JSON.parse(result.stdout);
+}
+
+function asyncJson(python, script, args, timeoutMs = 30000) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(python, [script, ...args], {stdio: ["ignore", "pipe", "pipe"]});
+    let stdout = "";
+    let stderr = "";
+    const timeout = setTimeout(() => child.kill("SIGTERM"), timeoutMs);
+    child.stdout.on("data", chunk => {
+      stdout += chunk;
+      if (Buffer.byteLength(stdout) > PYTHON_MAX_BUFFER) child.kill("SIGTERM");
+    });
+    child.stderr.on("data", chunk => {
+      stderr += chunk;
+      if (Buffer.byteLength(stderr) > PYTHON_MAX_BUFFER) child.kill("SIGTERM");
+    });
+    child.once("error", error => {
+      clearTimeout(timeout);
+      reject(error);
+    });
+    child.once("close", code => {
+      clearTimeout(timeout);
+      if (code !== 0) return reject(new Error((stderr || `process exited ${code}`).trim()));
+      try { resolve(JSON.parse(stdout)); }
+      catch (error) { reject(new Error(`invalid JSON from ${script}: ${error.message}`)); }
+    });
+  });
+}
+
+function replayMatchesChampion(payload) {
+  const champion = payload?.champion;
+  const replay = payload?.historical_replay;
+  return Boolean(champion?.experiment_id && champion?.candidate_sha256
+    && replay?.availability === "available"
+    && replay?.candidate?.experiment_id === champion.experiment_id
+    && replay?.candidate?.sha256 === champion.candidate_sha256);
+}
+
+async function refreshReplayIfStale() {
+  if (!REPLAY_REFRESH_ENABLED || replayRefreshCheckRunning || replayRefreshRunning
+      || Date.now() - lastReplayRefreshAttempt < REPLAY_REFRESH_RETRY_MS) return;
+  replayRefreshCheckRunning = true;
+  try {
+    const payload = await asyncJson(STATUS_PYTHON, STATUS_SCRIPT, ["--dashboard-replay"]);
+    if (replayMatchesChampion(payload)) {
+      lastReplayRefreshAttempt = 0;
+      return;
+    }
+    if (!payload?.champion?.experiment_id || !payload?.champion?.candidate_sha256) return;
+    replayRefreshRunning = true;
+    lastReplayRefreshAttempt = Date.now();
+    console.log(`[replay-refresh] rebuilding canonical evidence for ${payload.champion.experiment_id}`);
+    const child = spawn(REPLAY_REFRESH_PYTHON, [REPLAY_REFRESH_SCRIPT], {
+      cwd: AUTOBOT_ROOT,
+      stdio: "ignore",
+    });
+    child.once("error", error => {
+      replayRefreshRunning = false;
+      console.error(`[replay-refresh] failed to start: ${error.message}`);
+    });
+    child.once("close", code => {
+      replayRefreshRunning = false;
+      if (code === 0) {
+        lastReplayRefreshAttempt = 0;
+        console.log(`[replay-refresh] canonical evidence build completed for ${payload.champion.experiment_id}`);
+      } else {
+        console.error(`[replay-refresh] canonical evidence build exited ${code}`);
+      }
+    });
+  } catch (error) {
+    lastReplayRefreshAttempt = Date.now();
+    console.error(`[replay-refresh] freshness check failed: ${error.message}`);
+  } finally {
+    replayRefreshCheckRunning = false;
+  }
 }
 
 const shell = readFileSync(`${__dirname}/index.html`, "utf8")
@@ -137,4 +224,9 @@ app.get(routePath("/api/dashboard/replay"), requireAuth, (req, res) => {
 app.listen(PORT, HOST, () => {
   const suffix = BASE_PATH || "/";
   console.log(`Autobot dashboard running on http://${HOST}:${PORT}${suffix}`);
+  if (REPLAY_REFRESH_ENABLED) {
+    void refreshReplayIfStale();
+    const timer = setInterval(() => void refreshReplayIfStale(), REPLAY_REFRESH_INTERVAL_MS);
+    timer.unref();
+  }
 });
