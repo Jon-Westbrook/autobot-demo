@@ -121,8 +121,8 @@ function asyncJson(python, script, args, timeoutMs = 30000) {
   });
 }
 
-function replayMatchesChampion(payload) {
-  const champion = payload?.champion;
+function replayMatchesLeader(payload) {
+  const champion = payload?.leader;
   const replay = payload?.historical_replay;
   return Boolean(champion?.experiment_id && champion?.candidate_sha256
     && replay?.availability === "available"
@@ -136,15 +136,19 @@ async function refreshReplayIfStale() {
   replayRefreshCheckRunning = true;
   try {
     const payload = await asyncJson(STATUS_PYTHON, STATUS_SCRIPT, ["--dashboard-replay"]);
-    if (replayMatchesChampion(payload)) {
+    if (replayMatchesLeader(payload)) {
       lastReplayRefreshAttempt = 0;
       return;
     }
-    if (!payload?.champion?.experiment_id || !payload?.champion?.candidate_sha256) return;
+    const leader = payload?.leader;
+    if (!leader?.experiment_id || !leader?.candidate_sha256 || !leader?.leader_type) return;
     replayRefreshRunning = true;
     lastReplayRefreshAttempt = Date.now();
-    console.log(`[replay-refresh] rebuilding canonical evidence for ${payload.champion.experiment_id}`);
-    const child = spawn(REPLAY_REFRESH_PYTHON, [REPLAY_REFRESH_SCRIPT], {
+    console.log(`[replay-refresh] rebuilding canonical evidence for ${leader.experiment_id}`);
+    const child = spawn(REPLAY_REFRESH_PYTHON, [REPLAY_REFRESH_SCRIPT,
+      "--leader-type", leader.leader_type,
+      "--experiment-id", leader.experiment_id,
+      "--candidate-sha256", leader.candidate_sha256], {
       cwd: AUTOBOT_ROOT,
       stdio: "ignore",
     });
@@ -156,7 +160,7 @@ async function refreshReplayIfStale() {
       replayRefreshRunning = false;
       if (code === 0) {
         lastReplayRefreshAttempt = 0;
-        console.log(`[replay-refresh] canonical evidence build completed for ${payload.champion.experiment_id}`);
+        console.log(`[replay-refresh] canonical evidence build completed for ${leader.experiment_id}`);
       } else {
         console.error(`[replay-refresh] canonical evidence build exited ${code}`);
       }

@@ -28,7 +28,7 @@ function dashboard() {
       querySelectorAll: selector => selector === ".nav a" ? nav : [],
     },
     fetch: (url, options) => url.endsWith("/api/dashboard/replay")
-      ? Promise.resolve(response({champion: null, historical_replay: {availability: "unavailable"}}))
+      ? Promise.resolve(response({leader: null, historical_replay: {availability: "unavailable"}}))
       : new Promise(resolve => requests.push({url, options, resolve})),
     history: {pushState(_state, _title, url) { location.pathname = url; }},
     location,
@@ -49,11 +49,11 @@ test("Research and Trading are separate authenticated routes with independent re
   assert.equal(nav[1].classList.active, false);
   assert.match(requests[0].url, /\/api\/dashboard\/research$/);
   assert.equal(requests[0].options.headers.Authorization, "Bearer test-token");
-  requests[0].resolve(response({champion: null, chart: {}, counts: {}, activity: {}, recent: []}));
+  requests[0].resolve(response({leader: null, chart: {}, counts: {}, activity: {}, recent: []}));
   await new Promise(resolve => setImmediate(resolve));
   const researchHtml = nodes.get("view").innerHTML;
   assert.match(researchHtml, /<h1>Research<\/h1>/);
-  assert.match(researchHtml, /Current Champion|Recent Experiments/);
+  assert.match(researchHtml, /Current Research Leader|Recent Experiments/);
   assert.match(researchHtml, /Development Replay/);
   assert.doesNotMatch(researchHtml, /No Active Strategies|Example Strategy Component/);
 
@@ -66,12 +66,12 @@ test("Research and Trading are separate authenticated routes with independent re
   const tradingHtml = nodes.get("view").innerHTML;
   assert.equal(nav[0].classList.active, false);
   assert.equal(nav[1].classList.active, true);
-  assert.match(tradingHtml, /Research · Current Champion/);
+  assert.match(tradingHtml, /Research · Current Leader/);
   assert.equal((tradingHtml.match(/class="tile"/g) || []).length, 0, "Trading omits low-value global status tiles");
   assert.doesNotMatch(tradingHtml, /READY|\$0|0\.00%/);
   assert.match(tradingHtml, /Historical[\s\S]*Modeled[\s\S]*Paper[\s\S]*Trivial Capital[\s\S]*Live/);
   assert.match(tradingHtml, /disabled title='Unavailable: no verified stage evidence'/);
-  assert.match(tradingHtml, /Historical unavailable until exact candidate and contract identity match/);
+  assert.match(tradingHtml, /Replay unavailable until exact current leader and contract identity match/);
   assert.doesNotMatch(tradingHtml, /<form|type="submit"|api\/(?:orders|promote)/i);
   assert.equal(runInContext("route", context), "trading");
 });
@@ -83,10 +83,10 @@ test("rapid navigation aborts stale route requests and does not render stale res
   assert.equal(requests[0].options.signal.aborted, true);
   requests[1].resolve(response({lanes: []}));
   await new Promise(resolve => setImmediate(resolve));
-  assert.match(nodes.get("view").innerHTML, /Research · Current Champion/);
-  requests[0].resolve(response({champion: {score: 0.25}, counts: {}, activity: {}, recent: []}));
+  assert.match(nodes.get("view").innerHTML, /Research · Current Leader/);
+  requests[0].resolve(response({leader: {score: 0.25}, counts: {}, activity: {}, recent: []}));
   await new Promise(resolve => setImmediate(resolve));
-  assert.doesNotMatch(nodes.get("view").innerHTML, /Current champion/);
+  assert.doesNotMatch(nodes.get("view").innerHTML, /Current leader/);
 });
 
 for (const failedRoute of ["research", "trading"]) {
@@ -114,7 +114,7 @@ test("route styling is responsive without a combined Research/Trading layout", (
 
 test("Research separates process tiles, champion identity and development score card", () => {
   const {context} = dashboard();
-  const payload = {champion: {experiment_id: "run-7", candidate_sha256: "a".repeat(64),
+  const payload = {leader: {experiment_id: "run-7", candidate_sha256: "a".repeat(64),
       dataset_manifest_sha256: "b".repeat(64), contract_version: "1.2.2", evaluator_version: "e1",
       development_start: "2016-01-04", development_end: "2024-08-01"},
     chart: {availability: "unavailable", points: []}, score_label: "Objective label",
@@ -124,15 +124,27 @@ test("Research separates process tiles, champion identity and development score 
   assert.match(html, /Process/);
   assert.match(html, /Experiments/);
   assert.match(html, /Scored/);
-  assert.match(html, /Current Champion/);
+  assert.match(html, /Current Research Leader/);
   assert.match(html, /Candidate SHA-256/);
   const identityCard = html.slice(html.indexOf('<article class="card champion-card"'), html.indexOf('<article class="card replay-card"'));
-  assert.doesNotMatch(identityCard, /Manifest SHA-256|Evaluator|Development window|Curve integrity|<svg|Annual return|Sharpe/);
+  assert.doesNotMatch(identityCard, /Manifest SHA-256|Development window|Curve integrity|<svg|Sharpe/);
+  assert.match(identityCard, /Full-development Annual return|Regimes passed/);
   assert.doesNotMatch(html, /Best Annual return|<th>Score<\/th>|0\.9100|91\.00%/);
   assert.match(html, /Development Replay/);
   assert.match(html, /Recent Experiments/);
   assert.match(html, /8\.20%/);
   assert.equal((html.match(/<svg /g)||[]).length,0,"no replay chart appears without verified evidence");
+});
+
+test("legacy v3 champion fields are never a dashboard leader fallback", () => {
+  const {context} = dashboard();
+  const legacy = {experiment_id: "stale-v3", candidate_sha256: "a".repeat(64)};
+  assert.match(context.renderResearch({champion: legacy, counts: {}, activity: {}, recent: []}),
+    /No current v4 leader/);
+  assert.match(context.renderTrading({lanes: [], champion: legacy}),
+    /No current v4 research leader/);
+  assert.doesNotMatch(context.renderResearch({champion: legacy, counts: {}, activity: {}, recent: []}),
+    /stale-v3/);
 });
 
 test("independent replay cards render only their own canonical period and Details", () => {
@@ -178,9 +190,9 @@ test("independent replay cards render only their own canonical period and Detail
   assert.equal((card.match(/<article class="card replay-card/g)||[]).length,1,"Details never nests another replay card");
   assert.match(context.replayCard(replay,"development","Development Replay","Dev",true),/Development Score/);
   assert.match(context.replayCard(replay,"development","Development Replay","Dev",true),/2023-01-01 → 2024-08-01/);
-  const tradingView=context.renderTrading({lanes:[],champion:{experiment_id:"frozen-id",candidate_sha256:"a".repeat(64),contract_version:"1.2.2",contract_sha256:"b".repeat(64)},historical_replay:{availability:"available",candidate:{experiment_id:"frozen-id",sha256:"a".repeat(64)},contract:{version:"1.2.2",sha256:"b".repeat(64)},periods:{through_present:replay.periods.five_year},development_objective:replay.development_objective,dataset:replay.dataset,configuration:replay.configuration}});
-  assert.match(tradingView,/Research · Current Champion/);
-  assert.match(tradingView,/HISTORICAL PREVIEW[\s\S]*NOT PROMOTED[\s\S]*NO CAPITAL AT RISK[\s\S]*no orders or promotion/);
+   const tradingView=context.renderTrading({lanes:[],leader:{leader_type:"qualified",experiment_id:"frozen-id",candidate_sha256:"a".repeat(64),contract_version:"1.2.2",contract_sha256:"b".repeat(64)},historical_replay:{availability:"available",candidate:{experiment_id:"frozen-id",sha256:"a".repeat(64)},contract:{version:"1.2.2",sha256:"b".repeat(64)},periods:{through_present:replay.periods.five_year},development_objective:replay.development_objective,dataset:replay.dataset,configuration:replay.configuration}});
+  assert.match(tradingView,/Research · Current Leader/);
+  assert.match(tradingView,/QUALIFIED CHAMPION · 4\/4 REGIMES[\s\S]*NOT PROMOTED[\s\S]*NO CAPITAL AT RISK[\s\S]*no orders or promotion/);
   assert.doesNotMatch(tradingView,/Strategy Component|template-inner/);
   assert.doesNotMatch(context.replayCard(replay,"five_year","Five-year Replay","5y",false),/Development Score/);
 });
@@ -274,7 +286,7 @@ test("replay benchmark selector toggles one overlay, preserves data and scale, a
 test("Research renders concise recent Annual return rows and an honest empty state", () => {
   const {context} = dashboard();
   const fixture = {
-    champion: null,
+    leader: null,
     chart: {availability: "unavailable", points: []},
     counts: {valid_attempts: 1, scored: 1, distinct_candidates: 1},
     activity: {state: "unknown", heartbeat: null},
@@ -301,7 +313,7 @@ test("Research keeps full champion evidence collapsed and omits noisy recent ide
   const {context} = dashboard();
   const fullSha = "a".repeat(64);
   const fixture = {
-    champion: {experiment_id: "champion-run", candidate_sha256: fullSha,
+    leader: {experiment_id: "champion-run", candidate_sha256: fullSha,
       dataset_manifest_sha256: "b".repeat(64), annual_return: 0.12, development_start: "2016-01-04",
       development_end: "2024-08-01"},
     chart: {availability: "unavailable", points: []},
@@ -317,7 +329,7 @@ test("Research keeps full champion evidence collapsed and omits noisy recent ide
   assert.doesNotMatch(html, /20\.00%/);
   assert.ok(html.includes(`<dt>Candidate SHA-256</dt><dd><code>${fullSha}</code></dd>`),
     "full champion identity remains available behind the collapsed Details disclosure");
-  assert.equal((html.match(/<summary>Champion identity<\/summary>/g) || []).length, 1);
+  assert.equal((html.match(/<summary>Leader identity<\/summary>/g) || []).length, 1);
   assert.match(html, /Candidate champion-run/,
     "the current candidate is visible without expanding identity details");
 });
@@ -370,11 +382,11 @@ test("chart uses a positive log axis and never bridges invalid or out-of-range g
   assert.ok(axisValues.every(value => value >= 9500 && value <= 15750), "tick range is derived from finite positive marks");
   assert.doesNotMatch(html, /3 missing marks shown as gaps/,
     "chart provenance prose stays out of the default chart view");
-  const details = context.renderResearch({champion: {experiment_id: "champ", candidate_sha256: "sha",
+  const details = context.renderResearch({leader: {experiment_id: "champ", candidate_sha256: "sha",
     dataset_manifest_sha256: "manifest", development_start: "2024-01-01", development_end: "2024-01-05",
     score: .25}, chart: {...data, development_start: "2024-01-01", development_end: "2024-01-05"},
     counts: {}, activity: {}, recent: []});
-  assert.match(details, /<summary>Champion identity<\/summary>/);
+  assert.match(details, /<summary>Leader identity<\/summary>/);
   assert.doesNotMatch(details, /3 missing marks|Manifest SHA-256|Curve integrity/,
     "chart provenance and performance stay out of the champion identity card");
   assert.doesNotMatch(html, /Objective score|fixture score window/);
@@ -491,15 +503,15 @@ test("a stale 401 cannot clear a reauthenticated session or replace its route", 
   assert.equal(nodes.get("login").style.display, "none");
   requests[1].resolve(response({lanes: []}));
   await new Promise(resolve => setImmediate(resolve));
-  assert.match(nodes.get("view").innerHTML, /Research · Current Champion/);
+  assert.match(nodes.get("view").innerHTML, /Research · Current Leader/);
   assert.equal(runInContext("route", context), "trading");
 });
 
 test("Trading keeps a champion preview and disables unsupported capital stages", () => {
   const {context} = dashboard();
-  const html = context.renderTrading({lanes: [], champion: null,
+  const html = context.renderTrading({lanes: [], leader: null,
     historical_replay: {availability: "unavailable"}});
-  assert.match(html, /Research · Current Champion/);
+  assert.match(html, /Research · Current Leader/);
   assert.equal((html.match(/role="tab"/g) || []).length, 5);
   assert.equal((html.match(/disabled title='Unavailable: no verified stage evidence'/g)||[]).length,5);
   assert.doesNotMatch(html, /submit|place order|enable live/i);

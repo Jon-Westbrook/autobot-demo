@@ -114,15 +114,17 @@ test("dashboard automatically rebuilds canonical replay when champion identity a
   writeFileSync(authFile, JSON.stringify({code: "secret"}));
   writeFileSync(statusScript, [
     "import json",
-    "print(json.dumps({'champion': {'experiment_id': 'latest', 'candidate_sha256': 'new-sha'},",
+    "print(json.dumps({'leader': {'experiment_id': 'latest', 'candidate_sha256': '" + "a".repeat(64) + "', 'leader_type': 'qualified'},",
     "'historical_replay': {'availability': 'available',",
     "'candidate': {'experiment_id': 'older', 'sha256': 'old-sha'}}}))",
   ].join("\n"));
   writeFileSync(builderScript, [
     "import os",
+    "import sys",
     "from pathlib import Path",
+    "import json",
     "p = Path(os.environ['REPLAY_TEST_MARKER'])",
-    "p.write_text(p.read_text() + 'ran\\n' if p.exists() else 'ran\\n')",
+    "p.write_text(json.dumps(sys.argv[1:]))",
   ].join("\n"));
   const python = new URL("../backtester/venv/bin/python", import.meta.url).pathname;
   const {child} = await startDashboard({AUTH_FILE: authFile, BASE_PATH: "",
@@ -133,9 +135,11 @@ test("dashboard automatically rebuilds canonical replay when champion identity a
   t.after(async () => { await stopDashboard(child); rmSync(directory, {recursive: true, force: true}); });
 
   for (let attempt = 0; attempt < 100 && !existsSync(marker); attempt++) await delay(25);
-  assert.equal(readFileSync(marker, "utf8"), "ran\n",
-    "stale replay identity starts one background canonical rebuild");
+  assert.deepEqual(JSON.parse(readFileSync(marker, "utf8")), ["--leader-type", "qualified",
+    "--experiment-id", "latest", "--candidate-sha256", "a".repeat(64)],
+    "the replay builder receives only the exact verifier-selected leader identity");
   await delay(100);
-  assert.equal(readFileSync(marker, "utf8"), "ran\n",
+  assert.deepEqual(JSON.parse(readFileSync(marker, "utf8")), ["--leader-type", "qualified",
+    "--experiment-id", "latest", "--candidate-sha256", "a".repeat(64)],
     "only one rebuild is started during the retry cooldown");
 });
