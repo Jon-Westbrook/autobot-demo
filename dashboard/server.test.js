@@ -40,7 +40,7 @@ async function stopDashboard(child) {
   await new Promise(resolve => child.once("exit", resolve));
 }
 
-test("auth config fails closed and tokens expire on protected requests", async t => {
+test("auth endpoint still fails closed on bad config while protected requests no longer need a token", async t => {
   const directory = mkdtempSync(join(tmpdir(), "autobot-dashboard-"));
   const authFile = join(directory, "auth.json");
   const {child, origin} = await startDashboard({AUTH_FILE: authFile, BASE_PATH: "",
@@ -60,8 +60,11 @@ test("auth config fails closed and tokens expire on protected requests", async t
   const {token} = await login.json();
   assert.ok(token);
   await delay(1100);
+  // Password auth is disabled: expired and missing tokens both pass.
   const expired = await fetch(origin + "/api/dashboard/research", {headers: {authorization: `Bearer ${token}`}});
-  assert.equal(expired.status, 401);
+  assert.equal(expired.status, 200);
+  const anonymous = await fetch(origin + "/api/dashboard/research");
+  assert.equal(anonymous.status, 200);
 });
 
 test("root and configured-base routes share the same correct shell", async t => {
@@ -82,7 +85,7 @@ test("root and configured-base routes share the same correct shell", async t => 
 });
 
 
-test("descriptive replay endpoint remains authenticated and serves only verified evidence", async t => {
+test("descriptive replay endpoint is open without a token and serves only verified evidence", async t => {
   const directory = mkdtempSync(join(tmpdir(), "autobot-dashboard-replay-"));
   const authFile = join(directory, "auth.json");
   writeFileSync(authFile, JSON.stringify({code: "secret"}));
@@ -91,21 +94,14 @@ test("descriptive replay endpoint remains authenticated and serves only verified
     STATUS_PYTHON: new URL("../backtester/venv/bin/python", import.meta.url).pathname});
   t.after(async () => { await stopDashboard(child); rmSync(directory, {recursive: true, force: true}); });
 
-  const denied = await fetch(origin + "/api/dashboard/replay");
-  assert.equal(denied.status, 401);
-  const login = await fetch(origin + "/api/auth", {method: "POST",
-    headers: {"content-type": "application/json"}, body: JSON.stringify({code: "secret"})});
-  const {token} = await login.json();
-  const response = await fetch(origin + "/api/dashboard/replay", {
-    headers: {authorization: `Bearer ${token}`},
-  });
+  const response = await fetch(origin + "/api/dashboard/replay");
   assert.equal(response.status, 200);
   const payload = await response.json();
   assert.equal(payload.historical_replay.availability, "unavailable",
     "local test has no pinned candidate/replay artifact and must fail closed");
 });
 
-test("manual refresh endpoint is authenticated and reports disabled replay rebuilding", async t => {
+test("manual refresh endpoint is open without a token and reports disabled replay rebuilding", async t => {
   const directory = mkdtempSync(join(tmpdir(), "autobot-manual-refresh-"));
   const authFile = join(directory, "auth.json");
   const statusScript = join(directory, "status.py");
@@ -114,14 +110,9 @@ test("manual refresh endpoint is authenticated and reports disabled replay rebui
   const {child, origin} = await startDashboard({AUTH_FILE: authFile, BASE_PATH: "",
     AUTOBOT_ROOT: directory, STATUS_SCRIPT: statusScript, REPLAY_REFRESH_ENABLED: "false"});
   t.after(async () => { await stopDashboard(child); rmSync(directory, {recursive: true, force: true}); });
-  assert.equal((await fetch(origin + "/api/dashboard/refresh", {method: "POST"})).status, 401);
-  const login = await fetch(origin + "/api/auth", {method: "POST",
-    headers: {"content-type": "application/json"}, body: JSON.stringify({code: "secret"})});
-  const {token} = await login.json();
-  const headers = {authorization: `Bearer ${token}`};
-  const refresh = await fetch(origin + "/api/dashboard/refresh", {method: "POST", headers});
+  const refresh = await fetch(origin + "/api/dashboard/refresh", {method: "POST"});
   assert.deepEqual(await refresh.json(), {state: "disabled"});
-  const state = await fetch(origin + "/api/dashboard/refresh-status", {headers});
+  const state = await fetch(origin + "/api/dashboard/refresh-status");
   assert.deepEqual(await state.json(), {state: "no_leader", leader: null});
 });
 

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { runInContext, runInNewContext } from "node:vm";
 
-function dashboard() {
+function dashboard({storedToken = "test-token"} = {}) {
   const html = readFileSync(new URL("./index.html", import.meta.url), "utf8");
   const script = /<script>([\s\S]*)<\/script>/.exec(html)[1];
   const nodes = new Map();
@@ -14,7 +14,6 @@ function dashboard() {
   const nav = ["research", "trading"].map(route => ({dataset: {route}, active: false, classList: {toggle(name, value) { if (name === "active") this.active = value; }}, addEventListener() {}}));
   const location = {pathname: "/research"};
   const requests = [];
-  let storedToken = "test-token";
   const storage = {
     getItem: () => storedToken,
     removeItem: () => { storedToken = null; },
@@ -41,6 +40,14 @@ function dashboard() {
 }
 
 const response = data => ({ok: true, json: async () => data});
+
+test("with no stored token the dashboard skips the password screen and loads Research", () => {
+  const {nodes, requests} = dashboard({storedToken: null});
+  assert.equal(nodes.get("login").style.display, "none");
+  assert.equal(nodes.get("app").style.display, "block");
+  assert.equal(requests.length, 1);
+  assert.match(requests[0].url, /\/api\/dashboard\/research$/);
+});
 
 test("Research and Trading are separate authenticated routes with independent requests and active nav", async () => {
   const {context, nodes, requests, nav} = dashboard();
