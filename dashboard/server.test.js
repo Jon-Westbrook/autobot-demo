@@ -85,20 +85,24 @@ test("root and configured-base routes share the same correct shell", async t => 
 });
 
 
-test("descriptive replay endpoint is open without a token and serves only verified evidence", async t => {
+test("replay endpoint is open without a token and passes the status payload through unchanged", async t => {
   const directory = mkdtempSync(join(tmpdir(), "autobot-dashboard-replay-"));
   const authFile = join(directory, "auth.json");
+  const statusScript = join(directory, "status.py");
+  const payload = {
+    leader: {experiment_id: "exp-stub", candidate_sha256: "a".repeat(64)},
+    historical_replay: {availability: "available", periods: {development: {metrics: {annual_return: 0.125}}}},
+  };
   writeFileSync(authFile, JSON.stringify({code: "secret"}));
+  writeFileSync(statusScript, "import sys\nassert sys.argv[1:] == ['--dashboard-replay'], sys.argv\n"
+    + `print(${JSON.stringify(JSON.stringify(payload))})\n`);
   const {child, origin} = await startDashboard({AUTH_FILE: authFile, BASE_PATH: "",
-    AUTOBOT_ROOT: new URL("..", import.meta.url).pathname.replace(/\/$/, ""),
-    STATUS_PYTHON: new URL("../backtester/venv/bin/python", import.meta.url).pathname});
+    AUTOBOT_ROOT: directory, STATUS_SCRIPT: statusScript, REPLAY_REFRESH_ENABLED: "false"});
   t.after(async () => { await stopDashboard(child); rmSync(directory, {recursive: true, force: true}); });
 
   const response = await fetch(origin + "/api/dashboard/replay");
   assert.equal(response.status, 200);
-  const payload = await response.json();
-  assert.equal(payload.historical_replay.availability, "unavailable",
-    "local test has no pinned candidate/replay artifact and must fail closed");
+  assert.deepEqual(await response.json(), payload);
 });
 
 test("manual refresh endpoint is open without a token and reports disabled replay rebuilding", async t => {
