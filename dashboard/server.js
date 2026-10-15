@@ -38,6 +38,8 @@ const validTokens = new Map();
 let replayRefreshCheckRunning = false;
 let replayRefreshRunning = false;
 let lastReplayRefreshAttempt = 0;
+let replayRefreshOutcome = "idle";
+let replayRefreshLeaderIdentity = null;
 
 function routePath(path) {
   return BASE_PATH + path;
@@ -130,20 +132,29 @@ function replayMatchesLeader(payload) {
     && replay?.candidate?.sha256 === champion.candidate_sha256);
 }
 
-async function refreshReplayIfStale() {
-  if (!REPLAY_REFRESH_ENABLED || replayRefreshCheckRunning || replayRefreshRunning
-      || Date.now() - lastReplayRefreshAttempt < REPLAY_REFRESH_RETRY_MS) return;
+async function refreshReplayIfStale(force = false) {
+  if (!REPLAY_REFRESH_ENABLED) return "disabled";
+  if (replayRefreshRunning) return "building";
+  if (replayRefreshCheckRunning) return "checking";
+  if (!force && Date.now() - lastReplayRefreshAttempt < REPLAY_REFRESH_RETRY_MS) return "cooldown";
   replayRefreshCheckRunning = true;
   try {
     const payload = await asyncJson(STATUS_PYTHON, STATUS_SCRIPT, ["--dashboard-replay"]);
     if (replayMatchesLeader(payload)) {
       lastReplayRefreshAttempt = 0;
-      return;
+      replayRefreshOutcome = "ready";
+      replayRefreshLeaderIdentity = `${payload.leader.experiment_id}:${payload.leader.candidate_sha256}`;
+      return "ready";
     }
     const leader = payload?.leader;
-    if (!leader?.experiment_id || !leader?.candidate_sha256 || !leader?.leader_type) return;
+    if (!leader?.experiment_id || !leader?.candidate_sha256 || !leader?.leader_type) {
+      replayRefreshOutcome = "no_leader";
+      return "no_leader";
+    }
     replayRefreshRunning = true;
     lastReplayRefreshAttempt = Date.now();
+    replayRefreshOutcome = "building";
+    replayRefreshLeaderIdentity = `${leader.experiment_id}:${leader.candidate_sha256}`;
     console.log(`[replay-refresh] rebuilding canonical evidence for ${leader.experiment_id}`);
     const child = spawn(REPLAY_REFRESH_PYTHON, [REPLAY_REFRESH_SCRIPT,
       "--leader-type", leader.leader_type,
@@ -154,22 +165,56 @@ async function refreshReplayIfStale() {
     });
     child.once("error", error => {
       replayRefreshRunning = false;
+      replayRefreshOutcome = "failed";
       console.error(`[replay-refresh] failed to start: ${error.message}`);
     });
     child.once("close", code => {
       replayRefreshRunning = false;
       if (code === 0) {
         lastReplayRefreshAttempt = 0;
+        replayRefreshOutcome = "built";
         console.log(`[replay-refresh] canonical evidence build completed for ${leader.experiment_id}`);
       } else {
+        replayRefreshOutcome = "failed";
         console.error(`[replay-refresh] canonical evidence build exited ${code}`);
       }
     });
+    return "building";
   } catch (error) {
     lastReplayRefreshAttempt = Date.now();
+    replayRefreshOutcome = "failed";
     console.error(`[replay-refresh] freshness check failed: ${error.message}`);
+    return "failed";
   } finally {
     replayRefreshCheckRunning = false;
+  }
+}
+
+async function replayRefreshStatus() {
+  if (replayRefreshRunning) return {state: "building", leader: replayRefreshLeaderIdentity};
+  if (replayRefreshCheckRunning) return {state: "checking", leader: replayRefreshLeaderIdentity};
+  try {
+    const payload = await asyncJson(STATUS_PYTHON, STATUS_SCRIPT, ["--dashboard-replay"]);
+    const leader = payload?.leader;
+    const identity = leader?.experiment_id && leader?.candidate_sha256
+      ? `${leader.experiment_id}:${leader.candidate_sha256}` : null;
+    if (replayMatchesLeader(payload)) {
+      replayRefreshOutcome = "ready";
+      replayRefreshLeaderIdentity = identity;
+      return {state: "ready", leader: identity};
+    }
+    if (!identity) return {state: "no_leader", leader: null};
+    if (replayRefreshOutcome === "failed" && identity === replayRefreshLeaderIdentity) {
+      return {state: "failed", leader: identity};
+    }
+    if (replayRefreshOutcome === "built" && identity === replayRefreshLeaderIdentity) {
+      return {state: "stale", leader: identity};
+    }
+    return {state: await refreshReplayIfStale(true), leader: identity};
+  } catch (error) {
+    replayRefreshOutcome = "failed";
+    console.error(`[replay-refresh] freshness check failed: ${error.message}`);
+    return {state: "failed", leader: replayRefreshLeaderIdentity};
   }
 }
 
@@ -222,6 +267,15 @@ app.get(routePath("/api/dashboard/replay"), requireAuth, (req, res) => {
   } catch (error) {
     res.status(500).json({ error: error.message });
   }
+});
+
+app.post(routePath("/api/dashboard/refresh"), requireAuth, async (_req, res) => {
+  const state = await refreshReplayIfStale(true);
+  res.json({state});
+});
+
+app.get(routePath("/api/dashboard/refresh-status"), requireAuth, async (_req, res) => {
+  res.json(await replayRefreshStatus());
 });
 
 

@@ -105,6 +105,26 @@ test("descriptive replay endpoint remains authenticated and serves only verified
     "local test has no pinned candidate/replay artifact and must fail closed");
 });
 
+test("manual refresh endpoint is authenticated and reports disabled replay rebuilding", async t => {
+  const directory = mkdtempSync(join(tmpdir(), "autobot-manual-refresh-"));
+  const authFile = join(directory, "auth.json");
+  const statusScript = join(directory, "status.py");
+  writeFileSync(authFile, JSON.stringify({code: "secret"}));
+  writeFileSync(statusScript, "import json\nprint(json.dumps({'leader': None, 'historical_replay': {'availability': 'unavailable'}}))\n");
+  const {child, origin} = await startDashboard({AUTH_FILE: authFile, BASE_PATH: "",
+    AUTOBOT_ROOT: directory, STATUS_SCRIPT: statusScript, REPLAY_REFRESH_ENABLED: "false"});
+  t.after(async () => { await stopDashboard(child); rmSync(directory, {recursive: true, force: true}); });
+  assert.equal((await fetch(origin + "/api/dashboard/refresh", {method: "POST"})).status, 401);
+  const login = await fetch(origin + "/api/auth", {method: "POST",
+    headers: {"content-type": "application/json"}, body: JSON.stringify({code: "secret"})});
+  const {token} = await login.json();
+  const headers = {authorization: `Bearer ${token}`};
+  const refresh = await fetch(origin + "/api/dashboard/refresh", {method: "POST", headers});
+  assert.deepEqual(await refresh.json(), {state: "disabled"});
+  const state = await fetch(origin + "/api/dashboard/refresh-status", {headers});
+  assert.deepEqual(await state.json(), {state: "no_leader", leader: null});
+});
+
 test("dashboard automatically rebuilds canonical replay when champion identity advances", async t => {
   const directory = mkdtempSync(join(tmpdir(), "autobot-replay-refresh-"));
   const authFile = join(directory, "auth.json");

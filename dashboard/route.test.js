@@ -123,7 +123,13 @@ test("Research separates process tiles, champion identity and development score 
   const html = context.renderResearch(payload);
   assert.match(html, /Process/);
   assert.match(html, /Experiments/);
+  assert.match(html, /V4 Experiments/);
   assert.match(html, /Scored/);
+  assert.match(html, /Research Cycles/);
+  assert.match(html, /Development Window/);
+  assert.match(html, /Promoted Lanes/);
+  assert.match(html, /Current evaluator · pinned summaries/);
+  assert.match(html, /KEEP is not promotion/);
   assert.match(html, /Current Research Leader/);
   assert.match(html, /Candidate SHA-256/);
   const identityCard = html.slice(html.indexOf('<article class="card champion-card"'), html.indexOf('<article class="card replay-card"'));
@@ -134,6 +140,26 @@ test("Research separates process tiles, champion identity and development score 
   assert.match(html, /Recent Experiments/);
   assert.match(html, /8\.20%/);
   assert.equal((html.match(/<svg /g)||[]).length,0,"no replay chart appears without verified evidence");
+});
+
+test("sleeping state shows sleep start, scheduled wake, and live countdown without guessing", () => {
+  const {context} = dashboard();
+  const html = context.renderResearch({leader: null, counts: {}, recent: [],
+    activity: {state: "sleeping", cycle: 65,
+      sleep_started_at: "2026-10-15T16:40:00+00:00",
+      wake_at: "2026-10-15T17:00:36+00:00", completed_cycles: 64}});
+  assert.match(html, /sleeping since/);
+  assert.match(html, /wakes/);
+  assert.match(html, /Research Cycles/);
+  assert.match(html, /64/);
+  assert.match(html, /sleeping since Oct 15/);
+});
+
+test("main navigation exposes an accessible refresh control and status", () => {
+  const html = readFileSync(new URL("./index.html", import.meta.url), "utf8");
+  assert.match(html, /id="refresh-button"[^>]*aria-label="Check for the latest research leader and refresh replay charts"/);
+  assert.match(html, /id="refresh-status" aria-live="polite"/);
+  assert.match(html, /api\/dashboard\/refresh-status/);
 });
 
 test("legacy v3 champion fields are never a dashboard leader fallback", () => {
