@@ -165,9 +165,12 @@ test("last cycle tile reports completed experiments and distinguishes timeout fr
   const {context} = dashboard();
   const html = context.renderResearch({leader: null, counts: {}, recent: [],
     activity: {state: "sleeping", completed_cycles: 66,
-      last_cycle: {cycle: 66, experiments_completed: 20, elapsed_seconds: 2400.4,
+      last_cycle: {cycle: 66, started_at: "2026-10-15T17:00:00Z", ended_at: "2026-10-15T17:40:00Z",
+        experiments_completed: 20, elapsed_seconds: 2400.4,
         stop_reason: "provider_or_model_limit", command_timeout_seconds: 120.5}}});
   assert.match(html, /20 experiments/);
+  assert.match(html, /Oct 15/);
+  assert.match(html, /\d{1,2}:00 [AP]M [A-Z]{2,5} – Oct 15, \d{1,2}:40 [AP]M [A-Z]{2,5}/);
   assert.match(html, /40 min/);
   assert.match(html, /Final iteration timed out/);
   assert.match(html, /quota not confirmed/);
