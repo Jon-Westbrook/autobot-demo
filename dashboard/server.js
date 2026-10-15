@@ -1,15 +1,13 @@
 import express from "express";
-import { randomUUID } from "crypto";
-import { existsSync, readFileSync } from "fs";
+import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, statSync } from "fs";
 import { fileURLToPath } from "url";
 import { dirname } from "path";
-import { spawn, spawnSync } from "child_process";
+import { spawn } from "child_process";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
 
 const app = express();
-app.use(express.json());
 
 const PORT = Number(process.env.PORT || 3000);
 const HOST = process.env.HOST || "127.0.0.1";
@@ -19,7 +17,6 @@ const BASE_PATH = (() => {
   const normalized = raw.startsWith("/") ? raw : "/" + raw;
   return normalized.replace(/\/$/, "");
 })();
-const AUTH_FILE = process.env.AUTH_FILE || "/srv/data/todo-auth.json";
 const AUTOBOT_ROOT = process.env.AUTOBOT_ROOT || "/srv/autobot";
 const STATUS_PYTHON = process.env.STATUS_PYTHON || "python3";
 const STATUS_SCRIPT = process.env.STATUS_SCRIPT || `${AUTOBOT_ROOT}/status.py`;
@@ -33,71 +30,23 @@ const REPLAY_REFRESH_SCRIPT = process.env.REPLAY_REFRESH_SCRIPT
 const REPLAY_REFRESH_INTERVAL_MS = Math.max(10000, Number(process.env.REPLAY_REFRESH_INTERVAL_MS) || 60000);
 const REPLAY_REFRESH_RETRY_MS = Math.max(REPLAY_REFRESH_INTERVAL_MS,
   Number(process.env.REPLAY_REFRESH_RETRY_MS) || 120000);
+// A new leader's artifacts are written in several steps; wait before the first rebuild.
+const REPLAY_REFRESH_SETTLE_MS = Math.max(0, Number(process.env.REPLAY_REFRESH_SETTLE_MS ?? 30000) || 0);
+// Builder stdout/stderr, appended per build. Never a research artifact.
+const REPLAY_REFRESH_LOG = process.env.REPLAY_REFRESH_LOG
+  || "/srv/data/autobot-dashboard-replay/build.log";
+const REPLAY_REFRESH_LOG_MAX_BYTES = 5 * 1024 * 1024;
 
-const validTokens = new Map();
 let replayRefreshCheckRunning = false;
 let replayRefreshRunning = false;
 let lastReplayRefreshAttempt = 0;
 let replayRefreshOutcome = "idle";
 let replayRefreshLeaderIdentity = null;
+let settlingLeaderIdentity = null;
+let settlingSince = 0;
 
 function routePath(path) {
   return BASE_PATH + path;
-}
-
-function safeReadJson(file, defaultVal = {}) {
-  try {
-    if (!existsSync(file)) return defaultVal;
-    return JSON.parse(readFileSync(file, "utf8"));
-  } catch {
-    return defaultVal;
-  }
-}
-
-function getAuthConfig() {
-  try {
-    const auth = JSON.parse(readFileSync(AUTH_FILE, "utf8"));
-    if (!auth || typeof auth !== "object" || Array.isArray(auth)
-        || typeof auth.code !== "string" || !auth.code.trim()) return null;
-    const seconds = Number(auth.cookieMaxAge);
-    return {...auth, cookieMaxAge: Number.isFinite(seconds) && seconds > 0 ? seconds : 2592000};
-  } catch {
-    return null;
-  }
-}
-
-// Password auth disabled: dashboard is only reachable on the private network, and agents need direct QA access.
-function requireAuth(req, res, next) {
-  return next();
-  /* eslint-disable no-unreachable */
-  const auth = req.headers.authorization;
-  if (!auth || !auth.startsWith("Bearer ")) return res.status(401).json({ error: "Unauthorized" });
-  const token = auth.slice(7);
-  const session = validTokens.get(token);
-  if (!session) return res.status(401).json({ error: "Unauthorized" });
-  const config = getAuthConfig();
-  if (!config) return res.status(503).json({ error: "Authentication unavailable" });
-  if (Date.now() - session.created >= config.cookieMaxAge * 1000) {
-    validTokens.delete(token);
-    return res.status(401).json({ error: "Unauthorized" });
-  }
-  next();
-  /* eslint-enable no-unreachable */
-}
-
-
-function runDashboardJson(view) {
-  const option = view === "trading" ? "--dashboard-trading" : view === "replay" ? "--dashboard-replay" : "--dashboard-research";
-  const result = spawnSync(STATUS_PYTHON, [STATUS_SCRIPT, option], {
-    encoding: "utf8",
-    timeout: 30000,
-    maxBuffer: PYTHON_MAX_BUFFER,
-  });
-  if (result.error) throw result.error;
-  if (result.status !== 0) {
-    throw new Error((result.stderr || result.stdout || `status.py exited ${result.status}`).trim());
-  }
-  return JSON.parse(result.stdout);
 }
 
 function asyncJson(python, script, args, timeoutMs = 30000) {
@@ -120,11 +69,16 @@ function asyncJson(python, script, args, timeoutMs = 30000) {
     });
     child.once("close", code => {
       clearTimeout(timeout);
-      if (code !== 0) return reject(new Error((stderr || `process exited ${code}`).trim()));
+      if (code !== 0) return reject(new Error((stderr || stdout || `${script} exited ${code}`).trim()));
       try { resolve(JSON.parse(stdout)); }
       catch (error) { reject(new Error(`invalid JSON from ${script}: ${error.message}`)); }
     });
   });
+}
+
+function runDashboardJson(view) {
+  const option = view === "trading" ? "--dashboard-trading" : view === "replay" ? "--dashboard-replay" : "--dashboard-research";
+  return asyncJson(STATUS_PYTHON, STATUS_SCRIPT, [option]);
 }
 
 function replayMatchesLeader(payload) {
@@ -134,6 +88,29 @@ function replayMatchesLeader(payload) {
     && replay?.availability === "available"
     && replay?.candidate?.experiment_id === champion.experiment_id
     && replay?.candidate?.sha256 === champion.candidate_sha256);
+}
+
+function missingLeaderState(payload) {
+  return payload?.leader_status?.state === "unavailable" ? "leader_unavailable" : "no_leader";
+}
+
+function openBuildLog(identity) {
+  try {
+    mkdirSync(dirname(REPLAY_REFRESH_LOG), {recursive: true});
+    if (existsSync(REPLAY_REFRESH_LOG) && statSync(REPLAY_REFRESH_LOG).size > REPLAY_REFRESH_LOG_MAX_BYTES) {
+      renameSync(REPLAY_REFRESH_LOG, `${REPLAY_REFRESH_LOG}.1`);
+    }
+    appendFileSync(REPLAY_REFRESH_LOG, `\n=== ${new Date().toISOString()} rebuild ${identity} ===\n`);
+    return openSync(REPLAY_REFRESH_LOG, "a");
+  } catch (error) {
+    console.error(`[replay-refresh] build log unavailable: ${error.message}`);
+    return null;
+  }
+}
+
+function noteBuildLog(line) {
+  try { appendFileSync(REPLAY_REFRESH_LOG, `=== ${new Date().toISOString()} ${line} ===\n`); }
+  catch {}
 }
 
 async function refreshReplayIfStale(force = false) {
@@ -152,35 +129,50 @@ async function refreshReplayIfStale(force = false) {
     }
     const leader = payload?.leader;
     if (!leader?.experiment_id || !leader?.candidate_sha256 || !leader?.leader_type) {
-      replayRefreshOutcome = "no_leader";
-      return "no_leader";
+      replayRefreshOutcome = missingLeaderState(payload);
+      return replayRefreshOutcome;
+    }
+    const identity = `${leader.experiment_id}:${leader.candidate_sha256}`;
+    if (identity !== settlingLeaderIdentity) {
+      settlingLeaderIdentity = identity;
+      settlingSince = Date.now();
+    }
+    if (Date.now() - settlingSince < REPLAY_REFRESH_SETTLE_MS) {
+      replayRefreshOutcome = "settling";
+      replayRefreshLeaderIdentity = identity;
+      return "settling";
     }
     replayRefreshRunning = true;
     lastReplayRefreshAttempt = Date.now();
     replayRefreshOutcome = "building";
-    replayRefreshLeaderIdentity = `${leader.experiment_id}:${leader.candidate_sha256}`;
+    replayRefreshLeaderIdentity = identity;
     console.log(`[replay-refresh] rebuilding canonical evidence for ${leader.experiment_id}`);
+    const log = openBuildLog(identity);
+    const output = log === null ? "ignore" : log;
     const child = spawn(REPLAY_REFRESH_PYTHON, [REPLAY_REFRESH_SCRIPT,
       "--leader-type", leader.leader_type,
       "--experiment-id", leader.experiment_id,
       "--candidate-sha256", leader.candidate_sha256], {
       cwd: AUTOBOT_ROOT,
-      stdio: "ignore",
+      stdio: ["ignore", output, output],
     });
+    if (log !== null) closeSync(log);
     child.once("error", error => {
       replayRefreshRunning = false;
       replayRefreshOutcome = "failed";
+      noteBuildLog(`failed to start: ${error.message}`);
       console.error(`[replay-refresh] failed to start: ${error.message}`);
     });
     child.once("close", code => {
       replayRefreshRunning = false;
+      noteBuildLog(`exit ${code} for ${identity}`);
       if (code === 0) {
         lastReplayRefreshAttempt = 0;
         replayRefreshOutcome = "built";
         console.log(`[replay-refresh] canonical evidence build completed for ${leader.experiment_id}`);
       } else {
         replayRefreshOutcome = "failed";
-        console.error(`[replay-refresh] canonical evidence build exited ${code}`);
+        console.error(`[replay-refresh] canonical evidence build exited ${code}; see ${REPLAY_REFRESH_LOG}`);
       }
     });
     return "building";
@@ -207,7 +199,7 @@ async function replayRefreshStatus() {
       replayRefreshLeaderIdentity = identity;
       return {state: "ready", leader: identity};
     }
-    if (!identity) return {state: "no_leader", leader: null};
+    if (!identity) return {state: missingLeaderState(payload), leader: null};
     if (replayRefreshOutcome === "failed" && identity === replayRefreshLeaderIdentity) {
       return {state: "failed", leader: identity};
     }
@@ -230,55 +222,22 @@ for (const route of new Set(["/", "/research", "/trading", routePath("/"),
   app.get(route, sendShell);
 }
 
-app.use(BASE_PATH || "/", express.static(__dirname));
+for (const view of ["research", "trading", "replay"]) {
+  app.get(routePath(`/api/dashboard/${view}`), async (_req, res) => {
+    try {
+      res.json(await runDashboardJson(view));
+    } catch (error) {
+      res.status(500).json({ error: error.message });
+    }
+  });
+}
 
-app.post(routePath("/api/auth"), (req, res) => {
-  const { code } = req.body;
-  const config = getAuthConfig();
-  if (!config) return res.status(503).json({ error: "Authentication unavailable" });
-  if (code !== config.code) return res.status(403).json({ error: "Nope." });
-
-  const token = randomUUID();
-  validTokens.set(token, { created: Date.now() });
-
-  const maxAge = config.cookieMaxAge * 1000;
-  for (const [currentToken, value] of validTokens) {
-    if (Date.now() - value.created > maxAge) validTokens.delete(currentToken);
-  }
-
-  res.json({ token, maxAge: config.cookieMaxAge });
-});
-
-app.get(routePath("/api/dashboard/research"), requireAuth, (req, res) => {
-  try {
-    res.json(runDashboardJson("research"));
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.get(routePath("/api/dashboard/trading"), requireAuth, (req, res) => {
-  try {
-    res.json(runDashboardJson("trading"));
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.get(routePath("/api/dashboard/replay"), requireAuth, (req, res) => {
-  try {
-    res.json(runDashboardJson("replay"));
-  } catch (error) {
-    res.status(500).json({ error: error.message });
-  }
-});
-
-app.post(routePath("/api/dashboard/refresh"), requireAuth, async (_req, res) => {
+app.post(routePath("/api/dashboard/refresh"), async (_req, res) => {
   const state = await refreshReplayIfStale(true);
   res.json({state});
 });
 
-app.get(routePath("/api/dashboard/refresh-status"), requireAuth, async (_req, res) => {
+app.get(routePath("/api/dashboard/refresh-status"), async (_req, res) => {
   res.json(await replayRefreshStatus());
 });
 

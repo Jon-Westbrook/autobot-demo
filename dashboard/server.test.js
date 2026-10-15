@@ -7,6 +7,9 @@ import { createServer } from "node:net";
 import { spawn } from "node:child_process";
 import { setTimeout as delay } from "node:timers/promises";
 
+const python = existsSync(new URL("../backtester/venv/bin/python", import.meta.url).pathname)
+  ? new URL("../backtester/venv/bin/python", import.meta.url).pathname : "python3";
+
 async function freePort() {
   const server = createServer();
   await new Promise(resolve => server.listen(0, "127.0.0.1", resolve));
@@ -18,7 +21,7 @@ async function freePort() {
 async function startDashboard(env) {
   const port = await freePort();
   const child = spawn(process.execPath, [new URL("./server.js", import.meta.url).pathname], {
-    env: {...process.env, PORT: String(port), HOST: "127.0.0.1",
+    env: {...process.env, PORT: String(port), HOST: "127.0.0.1", STATUS_PYTHON: python,
       REPLAY_REFRESH_ENABLED: "false", ...env},
     stdio: "ignore",
   });
@@ -40,39 +43,28 @@ async function stopDashboard(child) {
   await new Promise(resolve => child.once("exit", resolve));
 }
 
-test("auth endpoint still fails closed on bad config while protected requests no longer need a token", async t => {
-  const directory = mkdtempSync(join(tmpdir(), "autobot-dashboard-"));
-  const authFile = join(directory, "auth.json");
-  const {child, origin} = await startDashboard({AUTH_FILE: authFile, BASE_PATH: "",
-    AUTOBOT_ROOT: new URL("..", import.meta.url).pathname.replace(/\/$/, ""),
-    STATUS_PYTHON: new URL("../backtester/venv/bin/python", import.meta.url).pathname});
-  t.after(async () => { await stopDashboard(child); rmSync(directory, {recursive: true, force: true}); });
+// A deterministic status.py stand-in: one fixed payload per dashboard view.
+function stubStatus(directory, payloads, {sleepSeconds = 0, failWith = null} = {}) {
+  const script = join(directory, "status.py");
+  writeFileSync(script, [
+    "import json, sys, time",
+    `payloads = json.loads(${JSON.stringify(JSON.stringify(payloads))})`,
+    `time.sleep(${sleepSeconds})`,
+    ...(failWith ? [`sys.stderr.write(${JSON.stringify(failWith)})`, "sys.exit(1)"] : []),
+    "print(json.dumps(payloads[sys.argv[1]]))",
+  ].join("\n") + "\n");
+  return script;
+}
 
-  const absent = await fetch(origin + "/api/auth", {method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify({code: "anything"})});
-  assert.equal(absent.status, 503);
-  writeFileSync(authFile, "not-json");
-  const malformed = await fetch(origin + "/api/auth", {method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify({code: "anything"})});
-  assert.equal(malformed.status, 503);
-
-  writeFileSync(authFile, JSON.stringify({code: "secret", cookieMaxAge: 1}));
-  const login = await fetch(origin + "/api/auth", {method: "POST", headers: {"content-type": "application/json"}, body: JSON.stringify({code: "secret"})});
-  assert.equal(login.status, 200);
-  const {token} = await login.json();
-  assert.ok(token);
-  await delay(1100);
-  // Password auth is disabled: expired and missing tokens both pass.
-  const expired = await fetch(origin + "/api/dashboard/research", {headers: {authorization: `Bearer ${token}`}});
-  assert.equal(expired.status, 200);
-  const anonymous = await fetch(origin + "/api/dashboard/research");
-  assert.equal(anonymous.status, 200);
-});
+function tempDirectory(t, prefix) {
+  const directory = mkdtempSync(join(tmpdir(), prefix));
+  t.after(() => rmSync(directory, {recursive: true, force: true}));
+  return directory;
+}
 
 test("root and configured-base routes share the same correct shell", async t => {
-  const directory = mkdtempSync(join(tmpdir(), "autobot-dashboard-"));
-  const authFile = join(directory, "auth.json");
-  writeFileSync(authFile, JSON.stringify({code: "secret"}));
-  const {child, origin} = await startDashboard({AUTH_FILE: authFile, BASE_PATH: "/autobot"});
-  t.after(async () => { await stopDashboard(child); rmSync(directory, {recursive: true, force: true}); });
+  const {child, origin} = await startDashboard({BASE_PATH: "/autobot"});
+  t.after(() => stopDashboard(child));
 
   for (const path of ["/", "/research", "/trading", "/autobot/", "/autobot/research", "/autobot/trading"]) {
     const response = await fetch(origin + path);
@@ -84,77 +76,154 @@ test("root and configured-base routes share the same correct shell", async t => 
   }
 });
 
+test("there is no auth endpoint and no static serving of dashboard source", async t => {
+  const {child, origin} = await startDashboard({BASE_PATH: "/autobot"});
+  t.after(() => stopDashboard(child));
+  for (const method of ["GET", "POST"]) {
+    assert.equal((await fetch(origin + "/autobot/api/auth", {method})).status, 404, `${method} /api/auth`);
+  }
+  for (const path of ["server.js", "server.test.js", "package.json", "build_research_replay.py",
+                      "index.html", "node_modules/express/package.json"]) {
+    assert.equal((await fetch(`${origin}/autobot/${path}`)).status, 404, path);
+  }
+});
 
-test("replay endpoint is open without a token and passes the status payload through unchanged", async t => {
-  const directory = mkdtempSync(join(tmpdir(), "autobot-dashboard-replay-"));
-  const authFile = join(directory, "auth.json");
-  const statusScript = join(directory, "status.py");
-  const payload = {
-    leader: {experiment_id: "exp-stub", candidate_sha256: "a".repeat(64)},
-    historical_replay: {availability: "available", periods: {development: {metrics: {annual_return: 0.125}}}},
+test("dashboard APIs pass status payloads through unchanged, without a token", async t => {
+  const directory = tempDirectory(t, "autobot-dashboard-api-");
+  const payloads = {
+    "--dashboard-research": {leader: null, leader_status: {state: "none"}, counts: {valid_attempts: 3}},
+    "--dashboard-trading": {lanes: []},
+    "--dashboard-replay": {leader: {experiment_id: "exp-stub", candidate_sha256: "a".repeat(64)},
+      historical_replay: {availability: "available", periods: {development: {metrics: {annual_return: 0.125}}}}},
   };
-  writeFileSync(authFile, JSON.stringify({code: "secret"}));
-  writeFileSync(statusScript, "import sys\nassert sys.argv[1:] == ['--dashboard-replay'], sys.argv\n"
-    + `print(${JSON.stringify(JSON.stringify(payload))})\n`);
-  const {child, origin} = await startDashboard({AUTH_FILE: authFile, BASE_PATH: "",
-    AUTOBOT_ROOT: directory, STATUS_SCRIPT: statusScript, REPLAY_REFRESH_ENABLED: "false"});
-  t.after(async () => { await stopDashboard(child); rmSync(directory, {recursive: true, force: true}); });
+  const {child, origin} = await startDashboard({BASE_PATH: "", AUTOBOT_ROOT: directory,
+    STATUS_SCRIPT: stubStatus(directory, payloads)});
+  t.after(() => stopDashboard(child));
 
-  const response = await fetch(origin + "/api/dashboard/replay");
-  assert.equal(response.status, 200);
-  assert.deepEqual(await response.json(), payload);
+  for (const [view, option] of [["research", "--dashboard-research"], ["trading", "--dashboard-trading"],
+                                ["replay", "--dashboard-replay"]]) {
+    const response = await fetch(`${origin}/api/dashboard/${view}`);
+    assert.equal(response.status, 200, view);
+    assert.deepEqual(await response.json(), payloads[option], view);
+  }
 });
 
-test("manual refresh endpoint is open without a token and reports disabled replay rebuilding", async t => {
-  const directory = mkdtempSync(join(tmpdir(), "autobot-manual-refresh-"));
-  const authFile = join(directory, "auth.json");
-  const statusScript = join(directory, "status.py");
-  writeFileSync(authFile, JSON.stringify({code: "secret"}));
-  writeFileSync(statusScript, "import json\nprint(json.dumps({'leader': None, 'historical_replay': {'availability': 'unavailable'}}))\n");
-  const {child, origin} = await startDashboard({AUTH_FILE: authFile, BASE_PATH: "",
-    AUTOBOT_ROOT: directory, STATUS_SCRIPT: statusScript, REPLAY_REFRESH_ENABLED: "false"});
-  t.after(async () => { await stopDashboard(child); rmSync(directory, {recursive: true, force: true}); });
-  const refresh = await fetch(origin + "/api/dashboard/refresh", {method: "POST"});
-  assert.deepEqual(await refresh.json(), {state: "disabled"});
-  const state = await fetch(origin + "/api/dashboard/refresh-status");
-  assert.deepEqual(await state.json(), {state: "no_leader", leader: null});
+test("status failures become a 500 carrying the status error", async t => {
+  const directory = tempDirectory(t, "autobot-dashboard-error-");
+  const {child, origin} = await startDashboard({BASE_PATH: "", AUTOBOT_ROOT: directory,
+    STATUS_SCRIPT: stubStatus(directory, {}, {failWith: "status exploded"})});
+  t.after(() => stopDashboard(child));
+  const response = await fetch(origin + "/api/dashboard/research");
+  assert.equal(response.status, 500);
+  assert.deepEqual(await response.json(), {error: "status exploded"});
 });
 
-test("dashboard automatically rebuilds canonical replay when champion identity advances", async t => {
-  const directory = mkdtempSync(join(tmpdir(), "autobot-replay-refresh-"));
-  const authFile = join(directory, "auth.json");
-  const statusScript = join(directory, "status.py");
+test("a slow status call does not block other requests", async t => {
+  const directory = tempDirectory(t, "autobot-dashboard-async-");
+  const {child, origin} = await startDashboard({BASE_PATH: "", AUTOBOT_ROOT: directory,
+    STATUS_SCRIPT: stubStatus(directory, {"--dashboard-research": {leader: null}}, {sleepSeconds: 1.5})});
+  t.after(() => stopDashboard(child));
+  const slow = fetch(origin + "/api/dashboard/research");
+  await delay(100);
+  const started = Date.now();
+  assert.equal((await fetch(origin + "/research")).status, 200);
+  assert.ok(Date.now() - started < 700, "the shell is served while status.py is still running");
+  assert.equal((await slow).status, 200);
+});
+
+test("manual refresh reports disabled rebuilding and distinguishes an unverifiable leader", async t => {
+  const directory = tempDirectory(t, "autobot-manual-refresh-");
+  const noLeader = stubStatus(directory, {"--dashboard-replay": {leader: null,
+    historical_replay: {availability: "unavailable"}}});
+  let dashboard = await startDashboard({BASE_PATH: "", AUTOBOT_ROOT: directory, STATUS_SCRIPT: noLeader});
+  assert.deepEqual(await (await fetch(dashboard.origin + "/api/dashboard/refresh", {method: "POST"})).json(),
+    {state: "disabled"});
+  assert.deepEqual(await (await fetch(dashboard.origin + "/api/dashboard/refresh-status")).json(),
+    {state: "no_leader", leader: null});
+  await stopDashboard(dashboard.child);
+
+  const unverifiable = stubStatus(directory, {"--dashboard-replay": {leader: null,
+    leader_status: {state: "unavailable", reason: "verifier_failed"},
+    historical_replay: {availability: "unavailable"}}});
+  dashboard = await startDashboard({BASE_PATH: "", AUTOBOT_ROOT: directory, STATUS_SCRIPT: unverifiable});
+  t.after(() => stopDashboard(dashboard.child));
+  assert.deepEqual(await (await fetch(dashboard.origin + "/api/dashboard/refresh-status")).json(),
+    {state: "leader_unavailable", leader: null});
+});
+
+function replayRebuildFixture(directory, {exitCode = 0} = {}) {
+  const leader = {experiment_id: "latest", candidate_sha256: "a".repeat(64), leader_type: "qualified"};
+  const statusScript = stubStatus(directory, {"--dashboard-replay": {leader,
+    historical_replay: {availability: "available", candidate: {experiment_id: "older", sha256: "old-sha"}}}});
   const builderScript = join(directory, "builder.py");
   const marker = join(directory, "builder-runs.txt");
-  writeFileSync(authFile, JSON.stringify({code: "secret"}));
-  writeFileSync(statusScript, [
-    "import json",
-    "print(json.dumps({'leader': {'experiment_id': 'latest', 'candidate_sha256': '" + "a".repeat(64) + "', 'leader_type': 'qualified'},",
-    "'historical_replay': {'availability': 'available',",
-    "'candidate': {'experiment_id': 'older', 'sha256': 'old-sha'}}}))",
-  ].join("\n"));
   writeFileSync(builderScript, [
-    "import os",
-    "import sys",
+    "import json, os, sys",
     "from pathlib import Path",
-    "import json",
-    "p = Path(os.environ['REPLAY_TEST_MARKER'])",
-    "p.write_text(json.dumps(sys.argv[1:]))",
+    "Path(os.environ['REPLAY_TEST_MARKER']).write_text(json.dumps(sys.argv[1:]))",
+    "print('builder stdout line', flush=True)",
+    "sys.stderr.write('builder stderr line\\n')",
+    `sys.exit(${exitCode})`,
   ].join("\n"));
-  const python = new URL("../backtester/venv/bin/python", import.meta.url).pathname;
-  const {child} = await startDashboard({AUTH_FILE: authFile, BASE_PATH: "",
-    AUTOBOT_ROOT: directory, STATUS_PYTHON: python, STATUS_SCRIPT: statusScript,
-    REPLAY_REFRESH_ENABLED: "true", REPLAY_REFRESH_PYTHON: python,
-    REPLAY_REFRESH_SCRIPT: builderScript, REPLAY_TEST_MARKER: marker,
-    REPLAY_REFRESH_RETRY_MS: "60000"});
-  t.after(async () => { await stopDashboard(child); rmSync(directory, {recursive: true, force: true}); });
+  return {statusScript, builderScript, marker, log: join(directory, "logs", "build.log")};
+}
 
-  for (let attempt = 0; attempt < 100 && !existsSync(marker); attempt++) await delay(25);
+async function waitFor(predicate, attempts = 200) {
+  for (let attempt = 0; attempt < attempts && !predicate(); attempt++) await delay(25);
+  return predicate();
+}
+
+test("dashboard automatically rebuilds canonical replay when champion identity advances, and logs it", async t => {
+  const directory = tempDirectory(t, "autobot-replay-refresh-");
+  const {statusScript, builderScript, marker, log} = replayRebuildFixture(directory);
+  const {child} = await startDashboard({BASE_PATH: "", AUTOBOT_ROOT: directory,
+    STATUS_SCRIPT: statusScript, REPLAY_REFRESH_ENABLED: "true", REPLAY_REFRESH_PYTHON: python,
+    REPLAY_REFRESH_SCRIPT: builderScript, REPLAY_TEST_MARKER: marker, REPLAY_REFRESH_LOG: log,
+    REPLAY_REFRESH_SETTLE_MS: "0", REPLAY_REFRESH_RETRY_MS: "60000"});
+  t.after(() => stopDashboard(child));
+
+  assert.ok(await waitFor(() => existsSync(marker)), "the builder ran");
   assert.deepEqual(JSON.parse(readFileSync(marker, "utf8")), ["--leader-type", "qualified",
     "--experiment-id", "latest", "--candidate-sha256", "a".repeat(64)],
     "the replay builder receives only the exact verifier-selected leader identity");
+  assert.ok(await waitFor(() => existsSync(log) && /exit 0/.test(readFileSync(log, "utf8"))));
+  const text = readFileSync(log, "utf8");
+  assert.match(text, /rebuild latest:a{64}/);
+  assert.match(text, /builder stdout line/);
+  assert.match(text, /builder stderr line/);
   await delay(100);
-  assert.deepEqual(JSON.parse(readFileSync(marker, "utf8")), ["--leader-type", "qualified",
-    "--experiment-id", "latest", "--candidate-sha256", "a".repeat(64)],
+  assert.equal((readFileSync(log, "utf8").match(/rebuild latest/g) || []).length, 1,
     "only one rebuild is started during the retry cooldown");
+});
+
+test("a failed replay build leaves its output and exit code in the build log", async t => {
+  const directory = tempDirectory(t, "autobot-replay-failure-");
+  const {statusScript, builderScript, marker, log} = replayRebuildFixture(directory, {exitCode: 3});
+  const {child, origin} = await startDashboard({BASE_PATH: "", AUTOBOT_ROOT: directory,
+    STATUS_SCRIPT: statusScript, REPLAY_REFRESH_ENABLED: "true", REPLAY_REFRESH_PYTHON: python,
+    REPLAY_REFRESH_SCRIPT: builderScript, REPLAY_TEST_MARKER: marker, REPLAY_REFRESH_LOG: log,
+    REPLAY_REFRESH_SETTLE_MS: "0", REPLAY_REFRESH_RETRY_MS: "60000"});
+  t.after(() => stopDashboard(child));
+  assert.ok(await waitFor(() => existsSync(log) && /exit 3/.test(readFileSync(log, "utf8"))));
+  assert.match(readFileSync(log, "utf8"), /builder stderr line/);
+  assert.deepEqual(await (await fetch(origin + "/api/dashboard/refresh-status")).json(),
+    {state: "failed", leader: `latest:${"a".repeat(64)}`});
+});
+
+test("a newly observed leader settles before its first rebuild", async t => {
+  const directory = tempDirectory(t, "autobot-replay-settle-");
+  const {statusScript, builderScript, marker, log} = replayRebuildFixture(directory);
+  const {child, origin} = await startDashboard({BASE_PATH: "", AUTOBOT_ROOT: directory,
+    STATUS_SCRIPT: statusScript, REPLAY_REFRESH_ENABLED: "true", REPLAY_REFRESH_PYTHON: python,
+    REPLAY_REFRESH_SCRIPT: builderScript, REPLAY_TEST_MARKER: marker, REPLAY_REFRESH_LOG: log,
+    REPLAY_REFRESH_SETTLE_MS: "1500"});
+  t.after(() => stopDashboard(child));
+  await delay(400);
+  assert.deepEqual(await (await fetch(origin + "/api/dashboard/refresh", {method: "POST"})).json(),
+    {state: "settling"});
+  assert.equal(existsSync(marker), false, "no build while the new leader is settling");
+  await delay(1300);
+  assert.deepEqual(await (await fetch(origin + "/api/dashboard/refresh", {method: "POST"})).json(),
+    {state: "building"});
+  assert.ok(await waitFor(() => existsSync(marker)));
 });

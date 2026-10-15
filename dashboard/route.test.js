@@ -3,22 +3,18 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { runInContext, runInNewContext } from "node:vm";
 
-function dashboard({storedToken = "test-token"} = {}) {
+function dashboard({innerWidth} = {}) {
   const html = readFileSync(new URL("./index.html", import.meta.url), "utf8");
   const script = /<script>([\s\S]*)<\/script>/.exec(html)[1];
   const nodes = new Map();
   const node = id => {
-    if (!nodes.has(id)) nodes.set(id, {style: {}, classList: {toggle() {}}, addEventListener() {}, innerHTML: "", disabled: false});
+    if (!nodes.has(id)) nodes.set(id, {style: {}, attributes: {}, classList: {toggle() {}}, addEventListener() {},
+      setAttribute(key, value) { this.attributes[key] = String(value); }, innerHTML: "", disabled: false});
     return nodes.get(id);
   };
   const nav = ["research", "trading"].map(route => ({dataset: {route}, active: false, classList: {toggle(name, value) { if (name === "active") this.active = value; }}, addEventListener() {}}));
   const location = {pathname: "/research"};
   const requests = [];
-  const storage = {
-    getItem: () => storedToken,
-    removeItem: () => { storedToken = null; },
-    setItem: (_key, value) => { storedToken = value; },
-  };
   const context = {
     AbortController,
     document: {
@@ -31,31 +27,90 @@ function dashboard({storedToken = "test-token"} = {}) {
       : new Promise(resolve => requests.push({url, options, resolve})),
     history: {pushState(_state, _title, url) { location.pathname = url; }},
     location,
-    localStorage: storage,
-    window: {addEventListener() {}},
+    window: {addEventListener() {}, innerWidth},
     setInterval() {},
   };
   runInNewContext(script, context);
-  return {context, nodes, requests, storage, nav};
+  return {context, nodes, requests, nav};
 }
 
 const response = data => ({ok: true, json: async () => data});
+const settle = () => new Promise(resolve => setImmediate(resolve));
+const emptyResearch = {leader: null, counts: {}, activity: {}, recent: []};
 
-test("with no stored token the dashboard skips the password screen and loads Research", () => {
-  const {nodes, requests} = dashboard({storedToken: null});
-  assert.equal(nodes.get("login").style.display, "none");
-  assert.equal(nodes.get("app").style.display, "block");
+function overlayReplay({assetBAvailable = true} = {}) {
+  const start = "2021-09-27", end = "2021-09-28";
+  const benchmark = (symbol, values, available) => ({availability: available ? "available" : "unavailable",
+    points: values.map((equity, index) => ({date: [start, end][index], equity: available ? equity : null})),
+    metrics: available ? {} : {unavailable_reason: "NO_VALID_FULL_SESSION_EXECUTION_FILL_IN_WINDOW"}});
+  return {availability: "available", candidate: {experiment_id: "fixture", sha256: "a".repeat(64)},
+    contract: {version: "1.2.2", sha256: "b".repeat(64)}, dataset: {manifest_sha256: "c".repeat(64), latest: end},
+    configuration: {starting_capital: "10000", slippage: "0.001", state_initialization: "Fresh capital",
+      objective: "reporting", strategy_config: {}, strategy_config_sha256: "d".repeat(64)},
+    development_objective: {window: {start: "2016-09-01", end: "2024-08-01"}, score: 0.1},
+    periods: {five_year: {metrics: {start_date: start, end_date: end, annual_return: 0.1, total_return: 0.2,
+      net_profit: 2000, sharpe: 1, max_drawdown: 0, ending_equity: 12000, starting_capital: 10000,
+      priced_sessions: 2, missing_marks: 0, executed_fills: 2, executed_fills_by_symbol: {ASSET_A: 2}},
+      points: [{date: start, equity: 10000}, {date: end, equity: 12000}],
+      benchmarks: {ASSET_A: benchmark("ASSET_A", [10000, 11000], true),
+        ASSET_B: benchmark("ASSET_B", [10000, 9000], assetBAvailable)}}}};
+}
+
+test("the dashboard loads Research directly, showing a loading state until data arrives", async () => {
+  const {nodes, requests} = dashboard();
   assert.equal(requests.length, 1);
   assert.match(requests[0].url, /\/api\/dashboard\/research$/);
+  assert.equal(requests[0].options.headers.Authorization, undefined, "no authentication layer");
+  assert.equal(nodes.has("login"), false, "there is no login screen");
+  const loading = nodes.get("view").innerHTML;
+  assert.match(loading, /<h1>Research<\/h1>/);
+  assert.match(loading, /role="status"[\s\S]*Loading research data/);
+  assert.equal(nodes.get("view").attributes["aria-busy"], "true");
+  requests[0].resolve(response(emptyResearch));
+  await settle();
+  assert.doesNotMatch(nodes.get("view").innerHTML, /Loading research data/);
+  assert.match(nodes.get("view").innerHTML, /Current Research Leader/);
+  assert.equal(nodes.get("view").attributes["aria-busy"], "false");
 });
 
-test("Research and Trading are separate authenticated routes with independent requests and active nav", async () => {
+test("navigation shows the new route loading at once; a same-route refresh keeps current content", async () => {
+  const {context, nodes, requests} = dashboard();
+  requests[0].resolve(response(emptyResearch));
+  await settle();
+  context.loadRoute("research");
+  assert.equal(requests.length, 2);
+  assert.match(nodes.get("view").innerHTML, /Current Research Leader/,
+    "auto-refresh does not blank the page it is refreshing");
+  assert.equal(nodes.get("view").attributes["aria-busy"], "true");
+  context.navigate("trading");
+  assert.match(nodes.get("view").innerHTML, /<h1>Trading<\/h1>[\s\S]*Loading trading data/,
+    "the previous route never stays on screen under the new route's navigation");
+  assert.doesNotMatch(nodes.get("view").innerHTML, /Current Research Leader/);
+  requests[2].resolve(response({lanes: []}));
+  await settle();
+  assert.match(nodes.get("view").innerHTML, /Research · Current Leader/);
+});
+
+test("route and replay requests start together and replay failure stays route-local", async () => {
+  const {context, nodes, requests} = dashboard();
+  const urls = [];
+  context.fetch = (url, options) => { urls.push(url); return url.endsWith("/api/dashboard/replay")
+    ? Promise.reject(new Error("replay down")) : new Promise(resolve => requests.push({url, options, resolve})); };
+  context.loadRoute("research");
+  assert.deepEqual(urls.map(url => url.replace(/^.*\/api/, "/api")),
+    ["/api/dashboard/replay", "/api/dashboard/research"], "both requests are in flight before either resolves");
+  requests.at(-1).resolve(response(emptyResearch));
+  await settle();
+  assert.match(nodes.get("view").innerHTML, /Current Research Leader/);
+  assert.match(nodes.get("view").innerHTML, /Unavailable: no verified canonical replay evidence/);
+});
+
+test("Research and Trading are separate routes with independent requests and active nav", async () => {
   const {context, nodes, requests, nav} = dashboard();
   assert.equal(requests.length, 1);
   assert.equal(nav[0].classList.active, true);
   assert.equal(nav[1].classList.active, false);
   assert.match(requests[0].url, /\/api\/dashboard\/research$/);
-  assert.equal(requests[0].options.headers.Authorization, "Bearer test-token");
   requests[0].resolve(response({leader: null, chart: {}, counts: {}, activity: {}, recent: []}));
   await new Promise(resolve => setImmediate(resolve));
   const researchHtml = nodes.get("view").innerHTML;
@@ -67,7 +122,6 @@ test("Research and Trading are separate authenticated routes with independent re
   context.navigate("trading");
   assert.equal(requests.length, 2, "Trading navigation makes one route-specific request");
   assert.match(requests[1].url, /\/api\/dashboard\/trading$/);
-  assert.equal(requests[1].options.headers.Authorization, "Bearer test-token");
   requests[1].resolve(response({lanes: []}));
   await new Promise(resolve => setImmediate(resolve));
   const tradingHtml = nodes.get("view").innerHTML;
@@ -97,14 +151,13 @@ test("rapid navigation aborts stale route requests and does not render stale res
 });
 
 for (const failedRoute of ["research", "trading"]) {
-  test(`${failedRoute} endpoint failures remain route-local and authenticated`, async () => {
+  test(`${failedRoute} endpoint failures remain route-local`, async () => {
     const {context, nodes, requests} = dashboard();
     if (failedRoute === "trading") context.navigate("trading");
     const request = requests.at(-1);
     request.resolve({ok: false, status: 503});
     await new Promise(resolve => setImmediate(resolve));
     assert.match(nodes.get("view").innerHTML, new RegExp(`${failedRoute === "trading" ? "Trading" : "Research"} unavailable`));
-    assert.equal(request.options.headers.Authorization, "Bearer test-token");
     assert.equal(requests.length, failedRoute === "trading" ? 2 : 1);
   });
 }
@@ -348,6 +401,8 @@ test("Research renders concise recent Annual return rows and an honest empty sta
   assert.doesNotMatch(html, /<th>Score<\/th>/);
   assert.match(html, /title="Experiment ID: fixture-run"/);
   assert.match(html, /<span class="run-index">01<\/span>/);
+  assert.match(html, /<th>Status<\/th>/);
+  assert.match(html, /<span class="run-status keep">KEEP<\/span>/, "each row says whether it was kept or discarded");
   assert.doesNotMatch(html, /0\.2000|20\.00%/, "scores stay out of experiment listings");
   assert.doesNotMatch(html, /table is not defined/);
 
@@ -373,7 +428,7 @@ test("Research keeps full champion evidence collapsed and omits noisy recent ide
   const html = context.renderResearch(fixture);
   assert.match(html, /title="Experiment ID: legacy-run"/);
   assert.doesNotMatch(html, /<td>legacy-run<\/td>/);
-  assert.match(html, /legacy rows may not have full source SHA-256/);
+  assert.match(html, /development-window Annual return only/);
   assert.doesNotMatch(html, /20\.00%/);
   assert.ok(html.includes(`<dt>Candidate SHA-256</dt><dd><code>${fullSha}</code></dd>`),
     "full champion identity remains available behind the collapsed Details disclosure");
@@ -534,27 +589,6 @@ test("chart bounds extreme positive equities and formats their ticks without inv
   assert.equal(points[4].equity, Number.MAX_VALUE);
 });
 
-test("a stale 401 cannot clear a reauthenticated session or replace its route", async () => {
-  const {context, nodes, requests, storage} = dashboard();
-  assert.equal(requests.length, 1);
-  assert.equal(requests[0].options.headers.Authorization, "Bearer test-token");
-  runInContext("TOKEN = 'new-token'", context);
-  storage.setItem("autobot_token", "new-token");
-  context.navigate("trading");
-  assert.equal(requests.length, 2);
-  assert.equal(requests[1].options.headers.Authorization, "Bearer new-token");
-  requests[0].resolve({status: 401, ok: false});
-  await new Promise(resolve => setImmediate(resolve));
-  assert.equal(runInContext("TOKEN", context), "new-token");
-  assert.equal(storage.getItem("autobot_token"), "new-token");
-  assert.equal(nodes.get("app").style.display, "block");
-  assert.equal(nodes.get("login").style.display, "none");
-  requests[1].resolve(response({lanes: []}));
-  await new Promise(resolve => setImmediate(resolve));
-  assert.match(nodes.get("view").innerHTML, /Research · Current Leader/);
-  assert.equal(runInContext("route", context), "trading");
-});
-
 test("Trading keeps a champion preview and disables unsupported capital stages", () => {
   const {context} = dashboard();
   const html = context.renderTrading({lanes: [], leader: null,
@@ -564,4 +598,99 @@ test("Trading keeps a champion preview and disables unsupported capital stages",
   assert.equal((html.match(/disabled title='Unavailable: no verified stage evidence'/g)||[]).length,5);
   assert.doesNotMatch(html, /submit|place order|enable live/i);
   assert.doesNotMatch(html, /\$[0-9]|[0-9]+\.[0-9]+%|READY/);
+});
+
+test("overlay selection survives the rebuild of its card on refresh", () => {
+  const {context} = dashboard();
+  const replay = overlayReplay();
+  const selectedOption = card => [...card.matchAll(/<option value="([^"]+)"([^>]*)>/g)]
+    .filter(([, , attrs]) => /\bselected\b/.test(attrs)).map(([, value]) => value);
+  assert.deepEqual(selectedOption(context.replayCard(replay, "five_year", "Replay", "", false)), ["none"]);
+  context.setReplayBenchmark("five_year", "ASSET_A");
+  let rebuilt = context.replayCard(replay, "five_year", "Replay", "", false);
+  assert.deepEqual(selectedOption(rebuilt), ["ASSET_A"], "the dropdown shows the overlay that is drawn");
+  assert.equal((rebuilt.match(/stroke="#f5a742"/g) || []).length, 1);
+  context.setReplayBenchmark("five_year", "none");
+  rebuilt = context.replayCard(replay, "five_year", "Replay", "", false);
+  assert.deepEqual(selectedOption(rebuilt), ["none"]);
+  assert.equal((rebuilt.match(/stroke="#f5a742"/g) || []).length, 0);
+  context.setReplayBenchmark("five_year", "ASSET_B");
+  rebuilt = context.replayCard(overlayReplay({assetBAvailable: false}), "five_year", "Replay", "", false);
+  assert.deepEqual(selectedOption(rebuilt), ["none"], "an overlay that became unavailable reads as None");
+  assert.equal((rebuilt.match(/stroke="#f5a742"/g) || []).length, 0);
+});
+
+test("leader verification unavailable is shown distinctly from no v4 leader", () => {
+  const {context} = dashboard();
+  const unavailable = {...emptyResearch, activity: {state: "active"}, leader_status: {state: "unavailable",
+    reason: "verifier_failed", detail: "RuntimeError: candidate_champion_identity_mismatch"}};
+  let html = context.renderResearch(unavailable);
+  assert.match(html, /VERIFICATION UNAVAILABLE/);
+  assert.match(html, /Leader verification unavailable · the AutoResearch verifier reported an error \(RuntimeError: candidate_champion_identity_mismatch\)/);
+  assert.match(html, /expected while an active research cycle is editing the candidate/);
+  assert.doesNotMatch(html, /NO CURRENT V4 LEADER|No current v4 leader/);
+  html = context.renderResearch({...unavailable, activity: {state: "sleeping"},
+    leader_status: {state: "unavailable", reason: "leader_invalidated", detail: "run-7"}});
+  assert.match(html, /the current leader is on the invalidation list \(run-7\)/);
+  assert.doesNotMatch(html, /active research cycle/);
+  html = context.renderResearch({...emptyResearch, leader_status: {state: "none", reason: "no_v4_incumbent"}});
+  assert.match(html, /NO CURRENT V4 LEADER/);
+  assert.doesNotMatch(html, /verification unavailable/i);
+  const trading = context.renderTrading({lanes: [], leader: null, leader_status: unavailable.leader_status,
+    historical_replay: {availability: "unavailable"}});
+  assert.match(trading, /VERIFICATION UNAVAILABLE/);
+  assert.match(trading, /Leader verification unavailable/);
+  assert.match(context.renderTrading({lanes: [], leader: null}), /No current v4 research leader/);
+});
+
+test("the leader headline is labeled with the authoritative v4 score window", () => {
+  const {context} = dashboard();
+  const html = context.renderResearch({...emptyResearch, leader: {experiment_id: "run-7", leader_type: "qualified",
+    candidate_sha256: "a".repeat(64), development_annual_return: 0.4271828, regimes_passed: 4, regime_results: [],
+    score_window: {start: "2016-09-01", end: "2024-08-01"},
+    development_start: "2016-01-04", development_end: "2024-08-01"}});
+  assert.match(html, /Score Annual return · 2016-09-01 → 2024-08-01<\/span><strong>42\.72%<\/strong>/);
+  assert.doesNotMatch(html, /Full-development Annual return|2016-01-04 → 2024-08-01/,
+    "the development calendar start is not presented as the score window");
+  const replay = {...overlayReplay(), periods: {development: {...overlayReplay().periods.five_year,
+    metrics: {...overlayReplay().periods.five_year.metrics, start_date: "2016-01-04", end_date: "2024-08-01"}}}};
+  const card = context.replayCard(replay, "development", "Development Replay", "", true);
+  assert.match(card, /2016-01-04 → 2024-08-01 · Start \$10,000/, "the replay card keeps its own replay dates");
+  assert.match(card, /<dt>Objective score window<\/dt><dd>2016-09-01 through 2024-08-01<\/dd>/);
+});
+
+test("narrow screens carry tooltip text in HTML and wide axis labels are not clipped", () => {
+  const {context} = dashboard({innerWidth: 390});
+  context.setReplayBenchmark("narrow", "ASSET_B");
+  const narrow = context.chart({availability: "available", chart_id: "narrow", replay: true,
+    points: [{date: "2024-01-01", equity: 10000}, {date: "2024-01-02", equity: 12000}],
+    benchmarks: {ASSET_B: {availability: "available", points: [
+      {date: "2024-01-01", equity: 10000}, {date: "2024-01-02", equity: 11000}]}}});
+  assert.equal((narrow.match(/<text class="chart-legend"/g) || []).length, 2,
+    "the in-SVG legend is marked so narrow CSS can hide it");
+  const html = readFileSync(new URL("./index.html", import.meta.url), "utf8");
+  assert.match(html, /@media\(max-width:620px\)\{\.chart \.chart-legend,\.chart \.chart-tip-bg,[^}]*\{display:none\}\.chart \.chart-tooltip\{position:static/);
+
+  const attrs = {"data-points": JSON.stringify([{x: 172, y: 80, date: "2024-01-01", equity: 10000,
+    benchmark: 10000, benchmarkSymbol: "ASSET_B"}]), "data-index": "0"};
+  const makeNode = () => ({setAttribute(key, value) { this[key] = String(value); }});
+  const elements = Object.fromEntries([".chart-crosshair", ".chart-point", ".chart-tip-bg", ".chart-tip-date",
+    ".chart-tip-equity", ".chart-tip-benchmark"].map(key => [key, makeNode()]));
+  const live = {textContent: "", hidden: true};
+  const chartHost = {querySelector: key => key === ".chart-tooltip" ? live : null};
+  const svg = {...makeNode(), parentNode: {querySelector: key => key === ".chart-inspection"
+      ? {...makeNode(), querySelector: name => elements[name]} : null},
+    closest: selector => selector === ".chart" ? chartHost : null,
+    getAttribute(key) { return attrs[key]; }, setAttribute(key, value) { attrs[key] = String(value); }};
+  context.chartPoint(svg, 0);
+  assert.equal(live.hidden, false);
+  assert.equal(live.textContent, "2024-01-01 · Strategy: $10,000.00 · ASSET_B buy & hold: $10,000",
+    "the tooltip element outside the SVG is populated (accessible + narrow-screen text)");
+
+  const wide = dashboard().context.chart({availability: "available",
+    points: [{date: "2024-01-01", equity: 10000}, {date: "2024-01-02", equity: 237030897}]});
+  const left = Number(/data-left="([0-9.]+)"/.exec(wide)[1]);
+  const labels = [...wide.matchAll(/class="chart-label chart-axis-label"[^>]*>([^<]+)</g)].map(match => match[1]);
+  assert.ok(labels.some(label => label.length >= 12), "fixture produces a long tick label");
+  assert.ok(labels.every(label => label.length * 6.6 + 8 <= left), "every tick label fits left of the plot");
 });

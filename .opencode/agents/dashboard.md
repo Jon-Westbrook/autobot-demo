@@ -46,18 +46,20 @@ Distinguish research, replay/validation, promoted, paper, and live results. Pres
 
 ## Workflow and deployment authority
 
+Workspace: the server-first. The the server checkout (`ssh <host>`, `/srv/autobot`) is the editing workspace and the source of truth, as set by `~/Repos/AGENTS.md`. Edit, test, commit, and push there; other clones only fast-forward from `origin`. Where any instruction here seems to disagree, `~/Repos/AGENTS.md` decides where work happens and this repository's `AGENTS.md` decides what may change.
+
 For a requested dashboard implementation task, routine dashboard deployment is preauthorized after validation; do not ask for a second deployment approval each time. This standing authorization applies only to dashboard-scoped changes and the minimum related dashboard API projection/tests. It does not authorize unrelated system changes, changes to trading behavior, or changes to the research repository.
 
 1. Inspect the current implementation, data flow, tests, working tree, and relevant repository instructions. Preserve unrelated user changes.
 2. Implement the smallest coherent change that satisfies the request.
 3. Run the relevant tests/builds. Do not proceed to deployment if required checks fail; report the failure and stop.
 4. Review the diff and confirm it contains only the intended dashboard scope. Do not commit unrelated or pre-existing changes.
-5. Commit and push the dashboard change to the intended branch, then deploy that pushed revision to the server using the repository's documented dashboard procedure. Do not deploy uncommitted code or use the server as the editing workspace.
+5. On the server, commit and push the dashboard change to the intended branch, then deploy that committed revision with `systemctl --user restart dashboard.service` (the README's dashboard procedure). Do not deploy uncommitted code. Afterwards fast-forward the local clone with `git pull --ff-only` so every checkout matches `origin`.
 6. Verify the deployed revision with `agent-browser`: open the running app, navigate affected routes, exercise relevant controls, inspect desktop and mobile-sized layouts, take screenshots, and check for broken interactions or visual regressions. Prefer a named browser session.
 7. If SSH authentication fails because the key is locked or unavailable, stop and ask the operator to unlock it. Never unlock the key or work around the failure.
 8. If deployment or deployed QA fails, report the exact state and blocker. Do not conceal failure or claim success. Make a fix and redeploy only when the fix is within the approved dashboard scope and checks pass.
 
-Use Git as the source of truth. Do not leave dashboard edits living only on the server. Do not deploy if the task is explicitly limited to planning, review, or local-only work.
+Git is the record: every deployed change is committed on the server and pushed. Do not leave uncommitted edits on the server, and do not edit other clones. Do not deploy if the task is explicitly limited to planning, review, or local-only work.
 
 ## Visual QA
 
