@@ -127,9 +127,8 @@ test("Research separates process tiles, champion identity and development score 
   assert.match(html, /Scored/);
   assert.match(html, /Research Cycles/);
   assert.match(html, /Development Window/);
-  assert.match(html, /Promoted Lanes/);
+  assert.match(html, /Last Active Cycle/);
   assert.match(html, /Current evaluator · pinned summaries/);
-  assert.match(html, /KEEP is not promotion/);
   assert.match(html, /Current Research Leader/);
   assert.match(html, /Candidate SHA-256/);
   const identityCard = html.slice(html.indexOf('<article class="card champion-card"'), html.indexOf('<article class="card replay-card"'));
@@ -153,6 +152,19 @@ test("sleeping state shows sleep start, scheduled wake, and live countdown witho
   assert.match(html, /Research Cycles/);
   assert.match(html, /64/);
   assert.match(html, /sleeping since Oct 15/);
+});
+
+test("last cycle tile reports completed experiments and distinguishes timeout from proven quota", () => {
+  const {context} = dashboard();
+  const html = context.renderResearch({leader: null, counts: {}, recent: [],
+    activity: {state: "sleeping", completed_cycles: 66,
+      last_cycle: {cycle: 66, experiments_completed: 20, elapsed_seconds: 2400.4,
+        stop_reason: "provider_or_model_limit", command_timeout_seconds: 120.5}}});
+  assert.match(html, /20 experiments/);
+  assert.match(html, /40 min/);
+  assert.match(html, /Final iteration timed out/);
+  assert.match(html, /quota not confirmed/);
+  assert.doesNotMatch(html, /Promoted Lanes/);
 });
 
 test("main navigation exposes an accessible refresh control and status", () => {
