@@ -694,3 +694,105 @@ test("narrow screens carry tooltip text in HTML and wide axis labels are not cli
   assert.ok(labels.some(label => label.length >= 12), "fixture produces a long tick label");
   assert.ok(labels.every(label => label.length * 6.6 + 8 <= left), "every tick label fits left of the plot");
 });
+
+const growthLab = (key, name, annual_return) => ({key, lab: `lab_${key}`, display_name: name, kind: "growth",
+  service: "active", available: true,
+  window: {start: "2016-01-04", end: "2024-08-01", label: "Development / in-sample"},
+  counts: {experiments: 471, keeps: 9, discards: 460, failures: 2},
+  best: {experiment_id: `${key}-best`, annual_return, max_drawdown: -0.2875, average_gross_exposure: 0.6115,
+    found_at: "2026-10-20T10:20:36+00:00",
+    regimes: [{key: "2022", label: "2022", excess_annual_return: -0.2257}]},
+  recent_bests: [{experiment_id: `${key}-best`, at: "2026-10-20T10:20:36+00:00", annual_return, max_drawdown: -0.2875},
+    {experiment_id: `${key}-older`, at: "2026-10-20T01:46:16+00:00", annual_return: 0.4, max_drawdown: -0.5}],
+  latest: {experiment_id: `${key}-latest`, status: "discard", score: 0.9, at: "2026-10-20T15:33:33+00:00"},
+  last_activity_at: "2026-10-20T15:33:33+00:00"});
+const activeLab = (multiple = 3.1416) => ({key: "active_v2", lab: "active_v2", display_name: "Active V2",
+  kind: "active", service: "active", available: true,
+  window: {start: "2023-01-03", end: "2025-06-30", label: "Search window / in-sample"},
+  counts: {experiments: 267, keeps: 8, discards: 259, failures: 0},
+  best: {experiment_id: "fc-best", growth_multiple: multiple, starting_capital: 10000, final_equity: multiple * 10000,
+    closed_trades: 94, winning_trades: 52, win_rate: 0.5512, cost_dollars: 6180.25, mean_holding_minutes: 2915,
+    max_drawdown: -0.1934, found_at: "2026-10-20T11:48:46+00:00", asset_use: {ASSET_A: 42, USD: 24}},
+  recent_bests: [{experiment_id: "fc-best", at: "2026-10-20T11:48:46+00:00", growth_multiple: multiple,
+    final_equity: multiple * 10000, closed_trades: 94}],
+  latest: {experiment_id: "fc-latest", status: "discard", score: 0.78, at: "2026-10-20T15:30:26+00:00"},
+  last_activity_at: "2026-10-20T15:30:26+00:00"});
+const threeLabs = () => [growthLab("growth_offensive", "Growth — Offensive", 0.3311),
+  growthLab("growth_defensive", "Growth — Defensive", 0.4210), activeLab()];
+const laneCards = html => html.slice(html.indexOf('<section class="lane-cards">'), html.indexOf('<article class="card research-table">'));
+const cardFor = (html, name) => { const start = html.indexOf(`<h2>${name}</h2>`); return html.slice(start, html.indexOf("</article>", start)); };
+
+test("Research leads with one lane card per active lab, above the archived single-lab view", () => {
+  const {context} = dashboard();
+  const html = context.renderResearch({...emptyResearch, labs: threeLabs()});
+  const cards = laneCards(html);
+  assert.equal((cards.match(/<article class="card lane-card">/g) || []).length, 3);
+  assert.ok(html.indexOf('class="lane-cards"') < html.indexOf("Archived lab"), "active labs come first");
+  assert.ok(html.indexOf("Archived lab") < html.indexOf("Current Research Leader"));
+  assert.equal((cards.match(/template-badge research-badge">ACTIVE</g) || []).length, 3);
+});
+
+test("Growth cards headline development Annual return of the champion, not the latest experiment", () => {
+  const {context} = dashboard();
+  const card = cardFor(context.renderResearch({...emptyResearch, labs: threeLabs()}), "Growth — Defensive");
+  assert.match(card, /DEVELOPMENT \/ IN-SAMPLE · 2016-01-04 → 2024-08-01/);
+  assert.match(card, /<span>Best Annual return<\/span><strong>42\.10%<\/strong>/);
+  for (const label of ["Max drawdown", "Avg gross exposure", "Experiments", "Keeps", "Failures",
+    "Best experiment", "Best found", "Latest experiment", "Last activity"]) assert.match(card, new RegExp(label));
+  assert.match(card, /-28\.75%/);
+  assert.match(card, /61\.15%/);
+  assert.match(card, /growth_defensive-best/);
+  assert.match(card, /growth_defensive-latest · DISCARD/);
+  assert.doesNotMatch(card, /90\.00%/, "the latest discard's score is not shown as the best");
+  assert.match(card, /2022 · excess Annual return<\/span><strong class="negative">-22\.57%/);
+  assert.doesNotMatch(card, /growth multiple|×/i);
+});
+
+test("Active card headlines growth multiple and final equity, never Annual return", () => {
+  const {context} = dashboard();
+  const card = cardFor(context.renderResearch({...emptyResearch, labs: threeLabs()}), "Active V2");
+  assert.match(card, /SEARCH WINDOW \/ IN-SAMPLE · 2023-01-03 → 2025-06-30/);
+  assert.match(card, /<span>Best growth multiple<\/span><strong>3\.14× capital<\/strong>/);
+  assert.match(card, /\$10,000 → \$31,416/);
+  for (const label of ["Trades", "Win rate", "Costs", "Mean holding", "Discards", "Assets traded"]) assert.match(card, new RegExp(label));
+  assert.match(card, /55\.12% \(52\/94\)/);
+  assert.match(card, /ASSET_A 42 · USD 24/);
+  assert.match(card, /2\.0 days/);
+  assert.doesNotMatch(card, /Annual return|fold|walk-forward/i);
+});
+
+test("one unavailable lab keeps the other cards, and service states are badged honestly", () => {
+  const {context} = dashboard();
+  const labs = threeLabs();
+  labs[0] = {key: "growth_offensive", display_name: "Growth — Offensive", kind: "growth",
+    service: "error", available: false, error: "Data temporarily unavailable (ValueError)"};
+  labs[2].service = "stopped";
+  const html = context.renderResearch({...emptyResearch, labs});
+  assert.match(cardFor(html, "Growth — Offensive"), /error-badge">ERROR<[\s\S]*Data temporarily unavailable/);
+  assert.match(cardFor(html, "Growth — Defensive"), /Best Annual return/);
+  assert.match(cardFor(html, "Active V2"), /warn-badge">STOPPED</);
+  assert.match(context.renderResearch(emptyResearch), /Research lab status unavailable/);
+});
+
+test("Recent Bests lists kept champions across labs newest first with lab-appropriate metrics", () => {
+  const {context} = dashboard();
+  const html = context.renderResearch({...emptyResearch, labs: threeLabs()});
+  const table = html.slice(html.indexOf("<h3>Recent Bests</h3>"), html.indexOf("</article>", html.indexOf("<h3>Recent Bests</h3>")));
+  assert.equal((table.match(/<tr class=/g) || []).length, 5);
+  assert.ok(table.indexOf("fc-best") < table.indexOf("growth_offensive-older"), "newest first across labs");
+  assert.match(table, /class="champ-row"><td>★ Active V2<\/td>[\s\S]*?3\.14× · \$31,416[\s\S]*?94 trades/);
+  assert.match(table, /42\.10% Annual return[\s\S]*?-28\.75% DD/);
+  assert.equal((html.match(/<h3>Recent Experiments<\/h3>/g) || []).length, 1, "archived lab table kept, not duplicated");
+});
+
+test("Refresh rereads the research endpoint and replaces lane data with the newer champion", async () => {
+  const {context, nodes, requests} = dashboard();
+  requests[0].resolve(response({...emptyResearch, labs: [activeLab(3.1416)]}));
+  await settle();
+  assert.match(nodes.get("view").innerHTML, /3\.14× capital/);
+  context.loadRoute("research");
+  requests[1].resolve(response({...emptyResearch, labs: [activeLab(9.5)]}));
+  await settle();
+  assert.match(nodes.get("view").innerHTML, /9\.50× capital/);
+  assert.doesNotMatch(nodes.get("view").innerHTML, /3\.14× capital/);
+});
