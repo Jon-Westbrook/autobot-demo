@@ -868,8 +868,8 @@ test("each population renders a table of every trajectory with its state, stalen
   const member = (lab, extra) => ({...lab, population: "growth", ...extra});
   const populations = [{population: "growth", display_name: "Growth", kind: "growth",
     policy: {enabled: true, fresh_slots: 1, mature_slots: 2, demote_after_no_keep: 300, duty: {fresh: [300, 180], mature: [60, 420]}},
-    members: [member(labs[0], {trajectory: "t002", state: "fresh", since_last_keep: 12, family: ["breakout idea"], max_similarity: 0.31, closest: "offensive"}),
-              member(labs[1], {trajectory: "offensive", state: "mature", since_last_keep: 900, keep_while_mature: true}),
+    members: [member(labs[0], {trajectory: "t002", state: "fresh", since_last_keep: 12, family: ["breakout idea"], max_similarity: 0.31, closest: "growth_offensive"}),
+              member(labs[1], {lab: "growth_offensive", trajectory: "offensive", state: "mature", since_last_keep: 900, keep_while_mature: true}),
               {trajectory: "defensive", state: "paused", available: false}],
     log: [{at: "2026-10-21T20:00:00+00:00", action: "spawn", lab: "growth_combined_t002", state: "fresh"}]}];
   const html = context.renderResearch({...emptyResearch, labs, populations});
