@@ -861,3 +861,25 @@ test("Refresh rereads the research endpoint and replaces lane data with the newe
   assert.doesNotMatch(view, /<strong>3\.14×<\/strong>/);
   assert.match(cardFor(view, "Active Frequent V3"), /Experiments<\/strong><span>3<[\s\S]*Keeps<\/strong><span>1</);
 });
+
+test("each population renders a table of every trajectory with its state, staleness and family", () => {
+  const {context} = dashboard();
+  const labs = fourLabs();
+  const member = (lab, extra) => ({...lab, population: "growth", ...extra});
+  const populations = [{population: "growth", display_name: "Growth", kind: "growth",
+    policy: {enabled: true, fresh_slots: 1, mature_slots: 2, demote_after_no_keep: 300, duty: {fresh: [300, 180], mature: [60, 420]}},
+    members: [member(labs[0], {trajectory: "t002", state: "fresh", since_last_keep: 12, family: ["breakout idea"], max_similarity: 0.31, closest: "offensive"}),
+              member(labs[1], {trajectory: "offensive", state: "mature", since_last_keep: 900, keep_while_mature: true}),
+              {trajectory: "defensive", state: "paused", available: false}],
+    log: [{at: "2026-10-21T20:00:00+00:00", action: "spawn", lab: "growth_combined_t002", state: "fresh"}]}];
+  const html = context.renderResearch({...emptyResearch, labs, populations});
+  const table = html.slice(html.indexOf("Growth population"), html.indexOf("Growth population log"));
+  assert.match(table, /1 fresh slot \(300m on \/ 180m off\) · 2 mature slots \(60m on \/ 420m off\)/);
+  assert.match(table, /<td>t002<\/td><td>FRESH<\/td><td>12<\/td>/);
+  assert.match(table, /MATURE <span class="state-flag">· NEW KEEP<\/span>/);
+  assert.match(table, /<td>defensive<\/td><td>PAUSED<\/td>/);
+  assert.match(table, /31% like offensive/);
+  assert.match(table, /breakout idea/);
+  assert.match(html, /Growth population log[\s\S]*spawn[\s\S]*growth_combined_t002/);
+  assert.ok(html.indexOf("Growth population") < html.indexOf('class="lane-cards"'), "populations lead the page");
+});
