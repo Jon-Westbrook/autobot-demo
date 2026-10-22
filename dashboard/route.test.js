@@ -747,7 +747,9 @@ test("Research leads with one lane card per active lab, above the archived singl
   assert.equal((cards.match(/<article class="card lane-card">/g) || []).length, 4);
   assert.ok(html.indexOf('class="lane-cards"') < html.indexOf("Archived lab"), "active labs come first");
   assert.ok(html.indexOf("Archived lab") < html.indexOf("Current Research Leader"));
-  assert.equal((cards.match(/template-badge research-badge">ACTIVE</g) || []).length, 3);
+  assert.equal((cards.match(/template-badge research-badge">RUNNING</g) || []).length, 2);
+  assert.equal((cards.match(/template-badge warn-badge">SLEEPING</g) || []).length, 1);
+  assert.equal((cards.match(/class="template-badge/g) || []).length, 4, "one status badge per card");
 });
 
 test("cards show whether each supervisor is running or sleeping and its last completed cycle", () => {
@@ -862,24 +864,43 @@ test("Refresh rereads the research endpoint and replaces lane data with the newe
   assert.match(cardFor(view, "Active Frequent V3"), /Experiments<\/strong><span>3<[\s\S]*Keeps<\/strong><span>1</);
 });
 
-test("each population renders a table of every trajectory with its state, staleness and family", () => {
+test("each population is one section: trajectory table, folded log, then its own lab cards", () => {
   const {context} = dashboard();
   const labs = fourLabs();
   const member = (lab, extra) => ({...lab, population: "growth", ...extra});
+  const t002 = member(labs[0], {trajectory: "t002", state: "fresh", template_label: "Combined universe", since_last_keep: 12,
+    family: ["breakout idea"], max_similarity: 0.31, closest: "growth_offensive"});
+  const offensive = member(labs[1], {lab: "growth_offensive", trajectory: "offensive", state: "mature",
+    since_last_keep: 900, keep_while_mature: true});
   const populations = [{population: "growth", display_name: "Growth", kind: "growth",
     policy: {enabled: true, fresh_slots: 1, mature_slots: 2, demote_after_no_keep: 300, duty: {fresh: [300, 180], mature: [60, 420]}},
-    members: [member(labs[0], {trajectory: "t002", state: "fresh", since_last_keep: 12, family: ["breakout idea"], max_similarity: 0.31, closest: "growth_offensive"}),
-              member(labs[1], {lab: "growth_offensive", trajectory: "offensive", state: "mature", since_last_keep: 900, keep_while_mature: true}),
-              {trajectory: "defensive", state: "paused", available: false}],
-    log: [{at: "2026-10-21T20:00:00+00:00", action: "spawn", lab: "growth_combined_t002", state: "fresh"}]}];
-  const html = context.renderResearch({...emptyResearch, labs, populations});
-  const table = html.slice(html.indexOf("Growth population"), html.indexOf("Growth population log"));
-  assert.match(table, /1 fresh slot \(300m on \/ 180m off\) · 2 mature slots \(60m on \/ 420m off\)/);
-  assert.match(table, /<td>t002<\/td><td>FRESH<\/td><td>12<\/td>/);
-  assert.match(table, /MATURE <span class="state-flag">· NEW KEEP<\/span>/);
-  assert.match(table, /<td>defensive<\/td><td>PAUSED<\/td>/);
-  assert.match(table, /31% like offensive/);
-  assert.match(table, /breakout idea/);
-  assert.match(html, /Growth population log[\s\S]*spawn[\s\S]*growth_combined_t002/);
-  assert.ok(html.indexOf("Growth population") < html.indexOf('class="lane-cards"'), "populations lead the page");
+    members: [t002, offensive, {trajectory: "defensive", state: "paused", available: false, service: "stopped"}],
+    log: [{at: "2026-10-21T20:00:00+00:00", action: "spawn", lab: "growth_combined_t002", state: "fresh"},
+          {at: "2026-10-21T19:00:00+00:00", action: "enroll", lab: "growth_offensive", state: "mature"}]}];
+  const html = context.renderResearch({...emptyResearch, labs: [t002, offensive, labs[2]], populations});
+  const section = html.slice(html.indexOf("Growth population"), html.indexOf("</section></section>"));
+  assert.match(section, /1 fresh slot \(300m on \/ 180m off\) · 2 mature slots \(60m on \/ 420m off\)/);
+  assert.match(section, /<strong>t002<\/strong><small>Combined universe<\/small><\/td><td>FRESH<\/td><td>Running cycle 6<\/td><td class="num best">33\.11%/);
+  assert.match(section, /MATURE <span class="state-flag">· NEW KEEP<\/span>/);
+  assert.match(section, /<strong>defensive<\/strong>[\s\S]*?<td>PAUSED<\/td><td>STOPPED<\/td><td class="num best">—/);
+  assert.match(section, /31% like offensive/);
+  assert.match(section, /<details class="population-log"><summary>Population log · 2 recent actions<\/summary>[\s\S]*spawn · <strong>growth_combined_t002[\s\S]*enroll · <strong>offensive<\/strong> → mature/);
+  assert.equal((section.match(/<article class="card lane-card">/g) || []).length, 2, "only this population's running trajectories get cards");
+  assert.match(section, /FRESH · Combined universe<\/strong> · DEVELOPMENT/);
+  assert.match(section, /Strategy family<\/span><ul><li>breakout idea<\/li>/);
+  assert.match(section, /Since last keep<\/strong><span>12</);
+  assert.ok(html.indexOf("Growth population") < html.indexOf("Active V2"), "a lab outside any population follows the populations");
+  assert.ok(html.indexOf("Active V2</h2>") < html.indexOf("<h3>Recent Bests</h3>"));
+  assert.ok(html.indexOf("<h3>Recent Bests</h3>") < html.indexOf("Archived lab"));
+});
+
+test("Recent Bests shows only the twelve newest keeps", () => {
+  const {context} = dashboard();
+  const lab = activeLab();
+  lab.recent_bests = Array.from({length: 20}, (_, i) => ({experiment_id: `k${String(i).padStart(2, "0")}`,
+    at: `2026-10-20T${String(i).padStart(2, "0")}:00:00+00:00`, growth_multiple: 2, final_equity: 20000, closed_trades: 5}));
+  const html = context.renderResearch({...emptyResearch, labs: [lab]});
+  const table = html.slice(html.indexOf("<h3>Recent Bests</h3>"), html.indexOf("</article>", html.indexOf("<h3>Recent Bests</h3>")));
+  assert.equal((table.match(/<tr class=/g) || []).length, 12);
+  assert.ok(table.includes("k19") && !table.includes("k07"), "newest kept, oldest dropped");
 });
