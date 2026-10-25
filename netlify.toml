@@ -1,0 +1,21 @@
+# Static demo: `npm run build:static` writes dist/ (the page plus the synthetic snapshot).
+[build]
+  command = "npm run build:static"
+  publish = "dist"
+
+[[redirects]]
+  from = "/research"
+  to = "/index.html"
+  status = 200
+
+[[redirects]]
+  from = "/trading"
+  to = "/index.html"
+  status = 200
+
+[[headers]]
+  for = "/*"
+  [headers.values]
+    X-Content-Type-Options = "nosniff"
+    Referrer-Policy = "strict-origin-when-cross-origin"
+    X-Frame-Options = "DENY"

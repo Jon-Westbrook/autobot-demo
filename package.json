@@ -10,7 +10,8 @@
   "scripts": {
     "start": "node dashboard/server.js",
     "test": "node --test dashboard/server.test.js dashboard/route.test.js dashboard/demo-source.test.js && node dashboard/render_check.mjs",
-    "generate-demo-data": "node scripts/generate-demo-data.mjs"
+    "generate-demo-data": "node scripts/generate-demo-data.mjs",
+    "build:static": "node scripts/build-static.mjs"
   },
   "dependencies": {
     "express": "^4.18.2"

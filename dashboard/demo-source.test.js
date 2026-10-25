@@ -13,10 +13,10 @@ test("rebase moves activity timestamps and experiment-id dates, never market dat
   const shifted = rebase({
     at: "2026-01-15T15:00:00Z", window: {start: "2014-01-02", end: "2020-12-31"},
     experiment_id: "20260114_093000_abc123", label: "Momentum A", n: 3,
-  }, 48 * HOUR);
-  assert.equal(shifted.at, "2026-01-17T15:00:00Z");
+  }, 50.5 * HOUR);
+  assert.equal(shifted.at, "2026-01-17T17:30:00Z");
   assert.deepEqual(shifted.window, {start: "2014-01-02", end: "2020-12-31"});
-  assert.equal(shifted.experiment_id, "20260116_093000_abc123");
+  assert.equal(shifted.experiment_id, "20260116_120000_abc123");
   assert.equal(shifted.label, "Momentum A");
   assert.equal(shifted.n, 3);
 });
@@ -60,4 +60,26 @@ test("without status.py the server serves the bundled demo snapshot", async t =>
   assert.equal(replay.historical_replay.candidate.experiment_id, replay.leader.experiment_id);
   const refresh = await fetch(`${origin}/api/dashboard/refresh`, {method: "POST"}).then(r => r.json());
   assert.equal(refresh.state, "disabled");
+});
+
+test("the static build's page shim rebases bundled payloads and disables refresh", async () => {
+  const {execFileSync} = await import("node:child_process");
+  const {readFileSync: read} = await import("node:fs");
+  const {runInNewContext} = await import("node:vm");
+  execFileSync(process.execPath, [new URL("../scripts/build-static.mjs", import.meta.url).pathname], {stdio: "ignore"});
+  const html = read(new URL("../dist/index.html", import.meta.url), "utf8");
+  const shim = /<script>\n(\(\(\)=>\{const DATETIME=[\s\S]*?)<\/script>/.exec(html)[1];
+  const requested = [];
+  const window = {fetch: async path => {
+    requested.push(path);
+    return new Response(JSON.stringify({generated_at: "2026-01-15T15:00:00Z", activity: {wake_at: "2026-01-15T17:00:00Z"}}));
+  }};
+  runInNewContext(shim, {window, location: {href: "http://demo.test/research"}, URL, Response, Date, JSON, Number, Object, Array});
+  const before = Date.now();
+  const body = await (await window.fetch("/api/dashboard/research")).json();
+  assert.deepEqual(requested, ["/api/dashboard/research.json"]);
+  assert.equal(body.generated_at, undefined);
+  const lead = Date.parse(body.activity.wake_at) - before;
+  assert.ok(lead > 2 * HOUR - 60000 && lead <= 2 * HOUR + 60000, `wake time ${lead}ms ahead`);
+  assert.equal((await (await window.fetch("/api/dashboard/refresh", {method: "POST"})).json()).state, "disabled");
 });

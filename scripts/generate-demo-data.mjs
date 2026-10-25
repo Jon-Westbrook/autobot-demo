@@ -92,8 +92,8 @@ const PERIODS = {
   through_present: ["2014-01-02", "2025-12-31"],
 };
 const ASSETS = ["ASSET_A", "ASSET_B", "ASSET_C", "ASSET_D"];
-const leaderDaily = returns(11, 0.15, 0.17);
-const benchmarkDaily = { INDEX: returns(23, 0.08, 0.15), SECTOR: returns(37, 0.11, 0.24) };
+const leaderDaily = returns(61, 0.12, 0.17);
+const benchmarkDaily = { INDEX: returns(83, 0.08, 0.15), SECTOR: returns(37, 0.11, 0.24) };
 const leaderId = experimentId(-24 * 41, "leader");
 const contract = { id: "DEMO_DAILY_CONTRACT", version: "1.0.0", sha256: sha("contract") };
 const manifestSha = sha("dataset-manifest");
@@ -184,7 +184,7 @@ function growthLab({ seed, lab, trajectory, name, template, state, mode, cycle, 
 }
 
 function activeLab({ seed, lab, trajectory, name, template, state, mode, cycle, experiments, keeps, family, multiple, frequency }) {
-  const r = rng(seed), closed = 180 + Math.floor(r() * 220), wins = Math.round(closed * (0.51 + r() * 0.06));
+  const r = rng(seed), closed = frequency ? 340 + Math.floor(r() * 120) : 160 + Math.floor(r() * 80), wins = Math.round(closed * (0.51 + r() * 0.06));
   const sessionsTotal = 601, inMarket = Math.round(sessionsTotal * (0.48 + r() * 0.2)), foundHours = -8 - r() * 50;
   const best = {
     experiment_id: experimentId(foundHours, `${lab}-best`), found_at: at(foundHours), growth_multiple: multiple,
