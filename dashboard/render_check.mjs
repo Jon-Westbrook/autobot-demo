@@ -5,7 +5,8 @@ import { fileURLToPath } from 'node:url';
 const here=dirname(fileURLToPath(import.meta.url));
 const html=readFileSync(join(here,'index.html'),'utf8');
 const server=readFileSync(join(here,'server.js'),'utf8');
-const status=readFileSync(join(here,'../status.py'),'utf8');
+const demoSource=readFileSync(join(here,'demo-source.js'),'utf8');
+const generator=readFileSync(join(here,'../scripts/generate-demo-data.mjs'),'utf8');
 const research=[...html.matchAll(/function renderResearch\(data\)\{([\s\S]*?)\n\}/g)][0]?.[1]??'';
 const replay=[...html.matchAll(/function replayCard\([\s\S]*?\n\}/g)][0]?.[0]??'';
 const trading=[...html.matchAll(/function renderTemplate\([\s\S]*?\n\}/g)][0]?.[0]??'';
@@ -18,16 +19,14 @@ const checks=[
  ['candidate ID and SHA are in collapsed identity Details', research.includes('<summary>Leader identity</summary>')&&research.includes('Candidate SHA-256')&&research.includes('Experiment')],
  ['development replay shows the objective score with the artifact score window', research.includes("replayCard(replay,'development','Development Replay','',true)")&&replay.includes('Objective score window')&&replay.includes('replay.development_objective.window')&&replay.includes('Development Score')],
  ['leader headline uses the authoritative score window, never the development calendar start', research.includes('Score Annual return · ${esc(scoreWindow)}')&&research.includes('c?.score_window')&&!research.includes('Full-development Annual return')],
- ['replay artifact schema v4 pins the v4 score window', status.includes('dashboard_post_selection_replay_v4')&&status.includes('window.get("start") != evaluator.PRE_START')&&readFileSync(join(here,'build_research_replay.py'),'utf8').includes("'window': {'start': evaluator.PRE_START")],
  ['development, five-year, ten-year and full-history cards are independent', ['development','five_year','ten_year','through_present'].every(k=>research.includes(`replayCard(replay,'${k}'`))],
  ['legacy frontend rebasing helper is removed and replay charts use canonical series directly', !html.includes('function fiveYearReplay')&&!html.includes('10000*(point.equity/base)')&&replay.includes('points:period.points||[]')],
  ['in-sample development is not mislabeled post-selection', replay.includes('IN-SAMPLE / SEARCH')&&replay.includes('POST-SELECTION')],
  ['replay metric definitions are available under collapsed Details', replay.includes('Annual return: endpoint equity / starting capital')&&replay.includes('sample deviation')&&replay.includes('<summary>Details</summary>')],
- ['period endpoint metrics sourced and validated server-side', status.includes('total_return')&&status.includes('net_profit')&&status.includes('expected_annual_return')],
- ['fresh capital is explicit for each independent replay window', replay.includes('fresh ledger from')&&status.includes('Fresh $10,000 ledger')&&readFileSync(join(here,'build_research_replay.py'),'utf8').includes('replay_start=start')],
+ ['fresh capital is explicit for each independent replay window', replay.includes('fresh ledger from')&&generator.includes('let equity = START_CAPITAL')],
  ['holdout points are not read through a development cutoff', html.includes('point.date<=cutoff')],
   ['chart uses actual positive equity marks and a safe numeric parser', html.includes('equities=points.map(point=>equityNumber(point.equity))')&&html.includes('benchmarkValues')&&html.includes('Number.isFinite(number)&&number>0')&&html.includes('(?![\\s\\S])')],
-   ['buy-and-hold selector is optional, single-choice and independent of chart scale', html.includes('setReplayBenchmark')&&html.includes('value="none"')&&html.includes('option("ASSET_A")')&&html.includes('option("ASSET_B")')&&html.includes('availability==="available"')&&html.includes('disabled title=')&&html.includes('strategy curve remains primary')&&html.includes('setChartScale')],
+   ['buy-and-hold selector is optional, single-choice and independent of chart scale', html.includes('setReplayBenchmark')&&html.includes('value="none"')&&html.includes('Object.keys(period.benchmarks||{}).map(option)')&&html.includes('availability==="available"')&&html.includes('disabled title=')&&html.includes('strategy curve remains primary')&&html.includes('setChartScale')],
  ['chart preserves missing-mark gaps without interpolation/smoothing', html.includes('valid=equities.map(value=>value!==null)')&&html.includes('segments.filter(segment=>segment.length>1)')&&html.includes('gaps at missing marks')],
  ['chart x-axis uses actual endpoint dates and values', html.includes('${esc(points[0].date)}')&&html.includes('${esc(points[points.length-1].date)}')&&html.includes('money(value)')],
  ['chart pointer and keyboard inspection stay available', html.includes('onpointermove="chartPointer(event,this)"')&&html.includes('onkeydown="chartKey(event,this)"')],
@@ -37,9 +36,9 @@ const checks=[
  ['no implied zero capital, readiness, or fabricated placeholder chart', !/\$0|READY|example-chart|example-metrics/.test(html)],
  ['responsive tiles and expanded metric grid preserved', html.includes('@media(max-width:620px)')&&html.includes('.tiles{grid-template-columns:repeat(2,minmax(0,1fr))')&&html.includes('.metrics{display:grid;grid-template-columns:repeat(4,minmax(0,1fr))')&&html.includes('.metrics{grid-template-columns:repeat(2,minmax(0,1fr))')],
  ['narrow charts move squashed SVG legend/tooltip text into the HTML tooltip', /@media\(max-width:620px\)\{\.chart \.chart-legend,[^}]*\{display:none\}\.chart \.chart-tooltip\{position:static/.test(html)&&html.includes('class="chart-legend"')],
- ['replay artifact reader fails closed on identity/pin mismatch', status.includes('DASHBOARD_REPLAY_PATH')&&status.includes('MANIFEST_SHA256_PIN')&&status.includes('candidate_sha256')&&status.includes('return unavailable')],
- ['tracked replay producer confines reporting-symbol union to loading and keeps replay eligibility typed', readFileSync(join(here,'build_research_replay.py'),'utf8').includes('tuple(dict.fromkeys((*deps.required, *reporting_symbols)))')&&readFileSync(join(here,'build_research_replay.py'),'utf8').includes('candidate_dependency_scope_changed_by_reporting_symbols')&&readFileSync(join(here,'build_research_replay.py'),'utf8').includes('canonical_replay.replay(\n        dataset, candidate.module')&&readFileSync(join(here,'build_research_replay.py'),'utf8').includes('/srv/data/autobot-dashboard-replay/')&&!readFileSync(join(here,'build_research_replay.py'),'utf8').includes('results.tsv')],
- ['active labs share one lane-card component and the shared research table, read live from status.py', [...html.matchAll(/function laneCard\(/g)].length===1&&research.includes('${renderPopulations(data.populations,data.labs)}')&&html.includes("researchTable('Recent Bests'")&&html.includes("researchTable('Recent Experiments'")&&status.includes('ACTIVE_RESEARCH_LABS')&&status.includes('**_dashboard_labs_and_populations()')&&!/active_v1|walk_forward|folds/.test(status.slice(status.indexOf('ACTIVE_RESEARCH_LABS'),status.indexOf('RECENT_BESTS_PER_LAB')))],
+ ['active labs share one lane-card component and the shared research tables', [...html.matchAll(/function laneCard\(/g)].length===1&&research.includes('${renderPopulations(data.populations,data.labs)}')&&html.includes("researchTable('Recent Bests'")&&html.includes("researchTable('Recent Experiments'")],
+ ['demo mode only reads the bundled snapshot: no process, network or write access', server.includes('const DEMO_MODE = !existsSync(STATUS_SCRIPT)')&&server.includes('if (DEMO_MODE) return Promise.resolve(demoPayload(')&&!/child_process|fetch\(|writeFile|http/.test(demoSource)],
+ ['demo data is labelled as synthetic in the page header', html.includes('id="demo-flag"')&&html.includes('demoFlag.hidden=!data.demo')&&generator.includes('demo: true')],
 ];
 const failed=checks.filter(([,ok])=>!ok);
 for(const [name,ok] of checks)console.log(`${ok?'PASS':'FAIL'} ${name}`);

@@ -1,0 +1,18 @@
+{
+  "name": "autobot-demo",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Demo of the Autobot research dashboard, running on synthetic data.",
+  "type": "module",
+  "engines": {
+    "node": ">=18"
+  },
+  "scripts": {
+    "start": "node dashboard/server.js",
+    "test": "node --test dashboard/server.test.js dashboard/route.test.js dashboard/demo-source.test.js && node dashboard/render_check.mjs",
+    "generate-demo-data": "node scripts/generate-demo-data.mjs"
+  },
+  "dependencies": {
+    "express": "^4.18.2"
+  }
+}

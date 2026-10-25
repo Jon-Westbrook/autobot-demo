@@ -1,8 +1,8 @@
 # Operating principles
 
-Durable principles only. What the system *is* belongs in [README](../README.md);
-where it currently stands belongs in [Current status](CURRENT_STATUS.md); execution
-semantics belong only in the [canonical contract](EXECUTION_CONTRACT.md).
+Durable principles only. What the system *is* belongs in the [README](../README.md) and
+[How it works](HOW_IT_WORKS.md); execution semantics belong only in the canonical
+execution contract, which stays with the private system.
 
 ## Growth first
 

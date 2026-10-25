@@ -1,8 +1,9 @@
 import express from "express";
 import { appendFileSync, closeSync, existsSync, mkdirSync, openSync, readFileSync, renameSync, statSync } from "fs";
 import { fileURLToPath } from "url";
-import { dirname } from "path";
+import { dirname, join, resolve } from "path";
 import { spawn } from "child_process";
+import { demoPayload } from "./demo-source.js";
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = dirname(__filename);
@@ -17,11 +18,14 @@ const BASE_PATH = (() => {
   const normalized = raw.startsWith("/") ? raw : "/" + raw;
   return normalized.replace(/\/$/, "");
 })();
-const AUTOBOT_ROOT = process.env.AUTOBOT_ROOT || "/srv/autobot";
+// The live system points AUTOBOT_ROOT at a checkout with status.py. Without one, the
+// dashboard serves the synthetic snapshot in demo-data/api/ instead.
+const AUTOBOT_ROOT = resolve(process.env.AUTOBOT_ROOT || join(__dirname, "..", "demo-data"));
 const STATUS_PYTHON = process.env.STATUS_PYTHON || "python3";
 const STATUS_SCRIPT = process.env.STATUS_SCRIPT || `${AUTOBOT_ROOT}/status.py`;
+const DEMO_MODE = !existsSync(STATUS_SCRIPT);
 const PYTHON_MAX_BUFFER = 16 * 1024 * 1024;
-const REPLAY_REFRESH_ENABLED = process.env.REPLAY_REFRESH_ENABLED !== "false";
+const REPLAY_REFRESH_ENABLED = !DEMO_MODE && process.env.REPLAY_REFRESH_ENABLED !== "false";
 const REPLAY_REFRESH_PYTHON = process.env.REPLAY_REFRESH_PYTHON
   || (existsSync(`${AUTOBOT_ROOT}/backtester/venv/bin/python`)
     ? `${AUTOBOT_ROOT}/backtester/venv/bin/python` : STATUS_PYTHON);
@@ -34,7 +38,7 @@ const REPLAY_REFRESH_RETRY_MS = Math.max(REPLAY_REFRESH_INTERVAL_MS,
 const REPLAY_REFRESH_SETTLE_MS = Math.max(0, Number(process.env.REPLAY_REFRESH_SETTLE_MS ?? 30000) || 0);
 // Builder stdout/stderr, appended per build. Never a research artifact.
 const REPLAY_REFRESH_LOG = process.env.REPLAY_REFRESH_LOG
-  || "/srv/data/autobot-dashboard-replay/build.log";
+  || `${AUTOBOT_ROOT}/logs/replay-build.log`;
 const REPLAY_REFRESH_LOG_MAX_BYTES = 5 * 1024 * 1024;
 
 let replayRefreshCheckRunning = false;
@@ -77,6 +81,7 @@ function asyncJson(python, script, args, timeoutMs = 30000) {
 }
 
 function runDashboardJson(view) {
+  if (DEMO_MODE) return Promise.resolve(demoPayload(AUTOBOT_ROOT, view));
   const option = view === "trading" ? "--dashboard-trading" : view === "replay" ? "--dashboard-replay" : "--dashboard-research";
   return asyncJson(STATUS_PYTHON, STATUS_SCRIPT, [option]);
 }
@@ -187,6 +192,7 @@ async function refreshReplayIfStale(force = false) {
 }
 
 async function replayRefreshStatus() {
+  if (DEMO_MODE) return {state: "disabled", leader: null};
   if (replayRefreshRunning) return {state: "building", leader: replayRefreshLeaderIdentity};
   if (replayRefreshCheckRunning) return {state: "checking", leader: replayRefreshLeaderIdentity};
   try {
@@ -244,7 +250,7 @@ app.get(routePath("/api/dashboard/refresh-status"), async (_req, res) => {
 
 app.listen(PORT, HOST, () => {
   const suffix = BASE_PATH || "/";
-  console.log(`Autobot dashboard running on http://${HOST}:${PORT}${suffix}`);
+  console.log(`Autobot dashboard running on http://${HOST}:${PORT}${suffix}${DEMO_MODE ? ` (demo data from ${AUTOBOT_ROOT})` : ""}`);
   if (REPLAY_REFRESH_ENABLED) {
     void refreshReplayIfStale();
     const timer = setInterval(() => void refreshReplayIfStale(), REPLAY_REFRESH_INTERVAL_MS);
