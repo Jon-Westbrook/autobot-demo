@@ -1,5 +1,7 @@
 Demo version of my Autobot system, running on sample data. The live system runs privately.
 
+**Live demo:** https://autobot-demo.netlify.app
+
 # Autobot
 
 A research system where AI agents build and test trading strategies around the clock, and a person decides what moves forward.
@@ -12,7 +14,7 @@ A research system where AI agents build and test trading strategies around the c
 |---|---|
 | Time in development | 21 months (January 2025 to October 2026) |
 | Commits across the private repositories | 479 |
-| Commits in this demo's history | 72 |
+| Commits in this demo's history | 73 |
 | Hand-built strategy versions before automation | 27 |
 | Automated research labs | 36 |
 | Experiments recorded by those labs | 23,000+ |
