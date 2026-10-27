@@ -6,7 +6,7 @@ Demo version of my Autobot system, running on sample data. The live system runs 
 
 A research system where AI agents build and test trading strategies around the clock, and a person decides what moves forward.
 
-![Autobot Research page: two research populations, each lab's state and current best](docs/screenshots/research-overview.png)
+![Autobot Research page: the leading candidate's full-history equity curve against buy-and-hold, with CAGR, max drawdown and growth of $10,000](docs/screenshots/research-overview.png)
 
 ## Scale and timeline
 
@@ -14,7 +14,7 @@ A research system where AI agents build and test trading strategies around the c
 |---|---|
 | Time in development | 21 months (January 2025 to October 2026) |
 | Commits across the private repositories | 479 |
-| Commits in this demo's history | 73 |
+| Commits in this demo's history | 74 |
 | Hand-built strategy versions before automation | 27 |
 | Automated research labs | 36 |
 | Experiments recorded by those labs | 23,000+ |
@@ -67,13 +67,13 @@ More detail in [docs/HOW_IT_WORKS.md](docs/HOW_IT_WORKS.md) and the principles b
 
 ## Screenshots
 
-**Lab cards.** Each trajectory's state, supervisor, best result, trade statistics and last research cycle.
+**The research loop.** Every experiment one lab has run. Each dot is a change an agent proposed and the replay engine scored; the few that beat the current best are kept and raise the bar.
 
-![Active population table, population log and two lab cards](docs/screenshots/population-and-labs.png)
+![Research loop chart: discarded experiments as grey dots, kept experiments as cyan dots on a rising best-so-far line](docs/screenshots/research-loop.png)
 
-**Replay.** The leading candidate over the full history from a fresh $10,000 ledger, with an optional buy-and-hold reference and point-by-point inspection.
+**Strategy labs.** Each lab's state and best result at a glance, with a sparkline of its progress. Trade statistics, supervisor state and experiment history sit behind View details.
 
-![Full-history replay chart with a buy-and-hold reference and hover inspection](docs/screenshots/replay-chart.png)
+![Growth population table and three lab cards with sparklines](docs/screenshots/strategy-labs.png)
 
 **Phone layout.**
 

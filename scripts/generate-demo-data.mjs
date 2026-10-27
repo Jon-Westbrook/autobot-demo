@@ -153,12 +153,38 @@ function recentBests(seed, kind, n, best) {
   const r = rng(seed), rows = [];
   for (let i = 0; i < n; i++) {
     const hours = -6 - i * (20 + r() * 40), id = i === 0 ? best.experiment_id : experimentId(hours, `${seed}-${i}`);
+    const step = i * 0.006 + r() * 0.004;
     rows.push(kind === "growth"
-      ? { at: i === 0 ? best.found_at : at(hours), experiment_id: id, annual_return: round(best.annual_return - i * 0.006 - r() * 0.004), max_drawdown: round(best.max_drawdown - r() * 0.03) }
+      ? { at: i === 0 ? best.found_at : at(hours), experiment_id: id, annual_return: i === 0 ? best.annual_return : round(best.annual_return - step), max_drawdown: round(best.max_drawdown - r() * 0.03) }
       : { at: i === 0 ? best.found_at : at(hours), experiment_id: id, growth_multiple: round(best.growth_multiple - i * 0.07, 3),
         final_equity: round((best.growth_multiple - i * 0.07) * START_CAPITAL, 2), closed_trades: best.closed_trades - i * 6 });
   }
   return rows;
+}
+
+// Every experiment a lab has run, in order: its score, or null for a failed run. Keeps are
+// the runs that beat the best so far, so they rise steadily toward the lab's current best
+// (the last few are its recent_bests); discards land below the best they were measured against.
+function progress(seed, counts, sinceLastKeep, recent, metric, baseline, spread) {
+  const r = rng(seed * 7 + 1), n = counts.experiments, k = counts.keeps, lastKeep = n - 1 - sinceLastKeep;
+  const tail = recent.map(row => row[metric]).reverse(), early = k - tail.length;
+  const keepAt = new Map();
+  for (let i = 0; i < k; i++) {
+    let index = Math.round(lastKeep * (i / (k - 1)) ** 1.6);
+    while (keepAt.has(index)) index++;
+    const x = i / early, value = i >= early ? tail[i - early] : baseline + (tail[0] - baseline) * (0.8 * (1 - (1 - x) ** 2.2) + 0.2 * x);
+    keepAt.set(index, value);
+  }
+  const open = [...Array(n).keys()].filter(i => !keepAt.has(i));
+  const failed = new Set();
+  while (failed.size < counts.failures) failed.add(open[Math.floor(r() * open.length)]);
+  const values = [];
+  let best = baseline;
+  for (let i = 0; i < n; i++) {
+    if (keepAt.has(i)) best = keepAt.get(i);
+    values.push(keepAt.has(i) ? round(best) : failed.has(i) ? null : round(best - spread * (0.08 - Math.log(1 - r() * 0.97))));
+  }
+  return values;
 }
 
 function growthLab({ seed, lab, trajectory, name, template, state, mode, cycle, experiments, keeps, family, drift }) {
@@ -173,7 +199,7 @@ function growthLab({ seed, lab, trajectory, name, template, state, mode, cycle, 
     regimes: REGIME_WINDOWS.map(([key, label]) => ({ key, label, excess_annual_return: round(m.annual_return - 0.03 + (r() - 0.45) * 0.08) })),
   };
   const discards = Math.round((experiments - keeps) * 0.96), failures = experiments - keeps - discards;
-  return {
+  const result = {
     lab, trajectory, display_name: `Growth · ${name}`, template_label: template, population: "growth", kind: "growth",
     state, service: "active", available: true, best, counts: { experiments, keeps, discards, failures },
     window: { label: "Development / in-sample", start: m.start_date, end: m.end_date },
@@ -181,6 +207,7 @@ function growthLab({ seed, lab, trajectory, name, template, state, mode, cycle, 
     since_last_keep: 3 + Math.floor(r() * 40), last_activity_at: at(-0.3 - r()), family,
     runner: runner(seed, mode, cycle, cycle - 1), recent_bests: recentBests(seed, "growth", 4, best),
   };
+  return { ...result, progress: progress(seed, result.counts, result.since_last_keep, result.recent_bests, "annual_return", 0.045, 0.012) };
 }
 
 function activeLab({ seed, lab, trajectory, name, template, state, mode, cycle, experiments, keeps, family, multiple, frequency }) {
@@ -197,7 +224,7 @@ function activeLab({ seed, lab, trajectory, name, template, state, mode, cycle, 
       frequency_threshold_trades_per_session: 0.5, qualified_winner: closed / sessionsTotal >= 0.5 } : {}),
   };
   const discards = Math.round((experiments - keeps) * 0.95), failures = experiments - keeps - discards;
-  return {
+  const result = {
     lab, trajectory, display_name: `Active · ${name}`, template_label: template, population: "active", kind: "active",
     state, service: "active", available: true, best, counts: { experiments, keeps, discards, failures },
     window: { label: "Search window / in-sample", start: "2023-01-03", end: "2025-06-30" },
@@ -205,6 +232,7 @@ function activeLab({ seed, lab, trajectory, name, template, state, mode, cycle, 
     since_last_keep: 2 + Math.floor(r() * 30), last_activity_at: at(-0.2 - r()), family,
     runner: runner(seed, mode, cycle, cycle - 1), recent_bests: recentBests(seed, "active", 4, best),
   };
+  return { ...result, progress: progress(seed, result.counts, result.since_last_keep, result.recent_bests, "growth_multiple", 1.05, 0.09) };
 }
 
 const labs = [
